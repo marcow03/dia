@@ -130,10 +130,23 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn cross_format_chains() {
+        for a in super::FORMATS {
+            for b in super::FORMATS {
+                let mut w = vec![];
+                let via_a = (a.read)(&(a.write)(&sample()), &mut w).unwrap();
+                let via_b = (b.read)(&(b.write)(&via_a), &mut w).unwrap();
+                assert!(w.is_empty(), "{} -> {}: {w:?}", a.name, b.name);
+                assert_eq!(via_b, sample(), "{} -> {}", a.name, b.name);
+            }
+        }
+    }
+
+    #[test]
     #[ignore]
     fn dump_sample() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures");
-        for f in &super::FORMATS[..2] {
+        for f in super::FORMATS {
             std::fs::write(format!("{dir}/sample.{}", f.extensions[0]), (f.write)(&sample())).unwrap();
         }
     }
