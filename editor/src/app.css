@@ -1,0 +1,49 @@
+:root {
+  --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --canvas: #fbfbfd;
+  --grid: #d9d9de;
+  --panel: #ffffff;
+  --subtle: #f2f2f5;
+  --line: #e5e5ea;
+  --text: #1d1d1f;
+  --muted: #86868b;
+  --accent: #0a84ff;
+  --shadow: 0 0 0 0.5px rgb(0 0 0 / 0.08), 0 4px 16px rgb(0 0 0 / 0.08);
+  font: 14px/1.4 var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+button:hover {
+  background: var(--subtle);
+}
+
+button.on {
+  background: var(--subtle);
+}

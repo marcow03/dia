@@ -1,0 +1,42 @@
+<script lang="ts">
+  import { PT_PER_CM } from './geometry'
+  import { renderLabel, type Rendered } from './typst'
+
+  let { source, cx, cy, background = false }: { source: string; cx: number; cy: number; background?: boolean } = $props()
+
+  let result = $state<Rendered | null>(null)
+
+  $effect(() => {
+    const s = source
+    let current = true
+    renderLabel(s).then((r) => current && (result = r))
+    return () => (current = false)
+  })
+
+  const ok = $derived(result && 'svg' in result ? result : null)
+  const w = $derived(ok ? ok.w / PT_PER_CM : 0)
+  const h = $derived(ok ? ok.h / PT_PER_CM : 0)
+</script>
+
+{#if result && 'error' in result}
+  <text x={cx} y={cy} class="error" text-anchor="middle" dominant-baseline="middle">{source}</text>
+{:else if ok}
+  {#if background}
+    <rect x={cx - w / 2 - 0.1} y={cy - h / 2 - 0.06} width={w + 0.2} height={h + 0.12} rx="0.08" fill="var(--canvas)" />
+  {/if}
+  <svg x={cx - w / 2} y={cy - h / 2} width={w} height={h} viewBox="0 0 {ok.w} {ok.h}" overflow="visible">
+    {@html ok.svg}
+  </svg>
+{/if}
+
+<style>
+  svg,
+  text,
+  rect {
+    pointer-events: none;
+  }
+  .error {
+    font: 0.3px ui-monospace, monospace;
+    fill: #ff3b30;
+  }
+</style>
