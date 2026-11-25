@@ -2,6 +2,7 @@ export type Point = { x: number; y: number }
 export type End = Point | { node: string }
 export type ShapeKind = 'rect' | 'ellipse' | 'diamond' | 'text' | 'image'
 export type Dash = 'solid' | 'dashed' | 'dotted'
+export type Align = 'left' | 'center' | 'right'
 export type Arrow = 'none' | 'stealth' | 'triangle' | 'open' | 'circle' | 'diamond' | 'bar'
 
 export const arrows: Arrow[] = ['none', 'stealth', 'triangle', 'open', 'circle', 'diamond', 'bar']
@@ -20,6 +21,7 @@ export type Style = {
   bold: boolean
   italic: boolean
   color: string
+  align: Align
 }
 
 /** Label placement: offset from a shape's center (cm), or position along a line (0..1). */
@@ -53,6 +55,7 @@ export const defaultStyle = (): Style => ({
   bold: false,
   italic: false,
   color: '#000000',
+  align: 'left',
 })
 
 export const isNode = (e: End): e is { node: string } => 'node' in e

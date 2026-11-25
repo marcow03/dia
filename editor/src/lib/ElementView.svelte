@@ -60,7 +60,6 @@
         cx={c.x + at.dx}
         cy={c.y + at.dy}
         handle={el.shape === 'text' ? undefined : handle}
-        align={el.shape === 'text' ? 'left' : 'center'}
       />
     {/if}
     </g>

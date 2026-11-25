@@ -51,7 +51,7 @@
   }
 
   const strokeKeys: (keyof Style)[] = ['stroke', 'fill', 'width', 'dash']
-  const textKeys: (keyof Style)[] = ['font', 'size', 'bold', 'italic', 'color']
+  const textKeys: (keyof Style)[] = ['font', 'size', 'bold', 'italic', 'color', 'align']
 
   function change(f: () => void) {
     if (!editingDefaults) checkpoint()
@@ -230,6 +230,13 @@
             <button class="i" class:on={s.italic} title="Italic" onclick={() => set('italic', !s.italic)}>I</button>
           </div>
         </div>
+        <div class="seg">
+          {#each [['left', 'textLeft'], ['center', 'textCenter'], ['right', 'textRight']] as const as [a, icon]}
+            <button class="icon" class:on={(s.align ?? 'left') === a} title="Align {a}" onclick={() => set('align', a)}>
+              <Icon name={icon} />
+            </button>
+          {/each}
+        </div>
       </section>
     {/if}
   </div>
@@ -331,6 +338,10 @@
   .icons button:disabled {
     opacity: 0.3;
     cursor: default;
+  }
+  .seg .icon :global(svg) {
+    width: 16px;
+    height: 16px;
   }
   .b {
     font-weight: 700;

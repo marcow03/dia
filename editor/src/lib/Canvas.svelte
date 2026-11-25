@@ -86,6 +86,8 @@
       return
     }
     if (app.tool === 'text') {
+      // Keep the browser from moving focus away from the label editor that opens now.
+      ev.preventDefault()
       checkpoint()
       const s = snapP(p)
       const nid = addShape('text', s.x - 1, s.y - 0.4, 2, 0.8)

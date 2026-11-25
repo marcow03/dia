@@ -10,7 +10,6 @@
     cy,
     background = false,
     handle,
-    align = 'center',
   }: {
     source: string
     style: Style
@@ -18,14 +17,13 @@
     cy: number
     background?: boolean
     handle?: string
-    align?: 'left' | 'center'
   } = $props()
 
   let result = $state<Rendered | null>(null)
 
   $effect(() => {
     let current = true
-    renderLabel(source, style, align).then((r) => current && (result = r))
+    renderLabel(source, style).then((r) => current && (result = r))
     return () => (current = false)
   })
 

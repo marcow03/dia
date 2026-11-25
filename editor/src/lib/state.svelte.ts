@@ -131,7 +131,7 @@ export function addShape(shape: ShapeKind, x: number, y: number, w: number, h: n
 
 /** Sizes a text box to its rendered label, keeping the top-left corner in place. */
 export async function fitTextBox(e: Shape) {
-  const r = await renderLabel(e.label, e.style, 'left')
+  const r = await renderLabel(e.label, e.style)
   if (!('svg' in r)) return
   const w = Math.max(r.w / PT_PER_CM + 0.3, 0.5)
   const h = Math.max(r.h / PT_PER_CM + 0.2, 0.5)

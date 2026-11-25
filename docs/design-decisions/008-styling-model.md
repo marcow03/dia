@@ -5,6 +5,7 @@
   - CeTZ: `text(font:, size:, weight:, style:, fill:)[label]`
   - TikZ: `font=\bfseries\itshape\fontsize{..}{..}\selectfont`, `text=`. The font family is not exported, because LaTeX font names don't map to Typst's.
   - drawio: `fontSize`, `fontStyle` bitmask, `fontColor`, `fontFamily`.
+- **Text alignment** (`align`: left, centre, right; default left) aligns the lines of a label. CeTZ wraps the body in `align(…)`, TikZ uses the node's `align=`, drawio uses `align=` for text elements only (on shapes it would also move the text inside the shape).
 - **Arrowheads** are one enum per end: `none | stealth | triangle | open | circle | diamond | bar`. Direction is just which ends have a head.
   - CeTZ marks: `stealth`, `>`, `straight`, `o`, `<>`, `|`.
   - TikZ arrows.meta: `Stealth`, `Triangle`, `Straight Barb`, `Circle`, `Diamond`, `Bar`.

@@ -87,6 +87,7 @@
   style:color={el?.style.color}
   style:font-weight={el?.style.bold ? 700 : 400}
   style:font-style={el?.style.italic ? 'italic' : 'normal'}
+  style:text-align={el?.style.align ?? 'left'}
 ></textarea>
 
 <style>
