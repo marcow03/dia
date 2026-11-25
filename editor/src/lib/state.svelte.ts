@@ -1,10 +1,29 @@
 import { endCenter, find } from './geometry'
 import { deleteDoc, listDocs, loadDoc, saveDoc, type DocMeta } from './docs'
-import { defaultStyle, isNode, type Diagram, type Element, type Point, type ShapeKind } from './types'
+import { defaultStyle, isNode, type Diagram, type Element, type Point, type ShapeKind, type Style } from './types'
 
 export type Tool = 'select' | ShapeKind | 'line' | 'arrow'
+export type DrawTool = Exclude<Tool, 'select' | 'image'>
 
 const CURRENT_KEY = 'dia:current'
+const DEFAULTS_KEY = 'dia:defaults'
+
+function toolDefaults(): Record<DrawTool, Style> {
+  const d = () => defaultStyle()
+  const all = {
+    rect: d(),
+    ellipse: d(),
+    diamond: d(),
+    line: d(),
+    arrow: { ...d(), end: 'stealth' as const },
+    text: { ...d(), stroke: null },
+  }
+  try {
+    return { ...all, ...JSON.parse(localStorage.getItem(DEFAULTS_KEY) ?? '{}') }
+  } catch {
+    return all
+  }
+}
 
 export const app = $state({
   diagram: { elements: [] } as Diagram,
@@ -17,6 +36,8 @@ export const app = $state({
   view: { x: 80, y: 80, zoom: 1 },
   showCode: false,
   toast: '',
+  /** Style given to new elements, per tool; edited in the style panel while a tool is active. */
+  defaults: toolDefaults(),
 })
 
 /** Loads the last opened document from the browser. */
@@ -28,6 +49,7 @@ export async function loadDocuments() {
 
 let saveTimer: ReturnType<typeof setTimeout>
 $effect.root(() => {
+  $effect(() => localStorage.setItem(DEFAULTS_KEY, JSON.stringify(app.defaults)))
   $effect(() => {
     const doc = { id: app.docId, name: app.name, diagram: $state.snapshot(app.diagram) as Diagram, updated: Date.now() }
     if (!doc.diagram.elements.length && doc.name === 'untitled') return
@@ -101,15 +123,14 @@ export function newId(prefix: string) {
 
 export function addShape(shape: ShapeKind, x: number, y: number, w: number, h: number, src?: string) {
   const id = newId(shape === 'text' ? 't' : shape === 'image' ? 'i' : 'n')
-  const style = defaultStyle()
-  if (shape === 'text' || shape === 'image') style.stroke = null
+  const style = shape === 'image' ? { ...defaultStyle(), stroke: null } : structuredClone($state.snapshot(app.defaults[shape as DrawTool]))
   app.diagram.elements.push({ id, type: 'shape', shape, x, y, w, h, style, label: '', ...(src && { src }) })
   return id
 }
 
-export function addLine(from: Element['id'] | Point, to: Point, arrow: boolean) {
+export function addLine(from: Element['id'] | Point, to: Point, tool: 'line' | 'arrow') {
   const id = newId('e')
-  const style = { ...defaultStyle(), end: arrow ? ('stealth' as const) : ('none' as const) }
+  const style = structuredClone($state.snapshot(app.defaults[tool]))
   const fromEnd = typeof from === 'string' ? { node: from } : from
   app.diagram.elements.push({ id, type: 'line', from: fromEnd, to, via: [], curved: false, style, label: '' })
   return id

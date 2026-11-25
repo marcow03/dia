@@ -53,6 +53,7 @@
     else if (mod && k === 's') download('cetz', 'typ')
     else if (mod && k === 'o') pickFile()
     else if (mod && k === 'n') newDocument()
+    else if (mod && k === '/') app.showCode = !app.showCode
     else if (mod) return
     else if (k === 'backspace' || k === 'delete') {
       if (!app.selection.length) return
@@ -117,11 +118,6 @@
           aria-label="Document name"
         />
       </div>
-      <div class="actions">
-        <button class="icon" class:on={app.showCode} title="Show CeTZ code" onclick={() => (app.showCode = !app.showCode)}>
-          <Icon name="code" />
-        </button>
-      </div>
     </header>
     <StylePanel />
     <Toolbar />
@@ -162,8 +158,7 @@
   .top > * {
     pointer-events: auto;
   }
-  .title,
-  .actions {
+  .title {
     display: flex;
     align-items: center;
     gap: 2px;

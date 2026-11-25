@@ -16,11 +16,12 @@
 
 <div class="bar">
   {#each tools as [tool, title, key]}
-    <button class:active={app.tool === tool} title="{title} ({key})" onclick={() => (app.tool = tool)}>
+    <button class="tool" class:active={app.tool === tool} title={title} onclick={() => (app.tool = tool)}>
       <Icon name={tool} />
+      <span>{key}</span>
     </button>
   {/each}
-  <button title="Image (I)" onclick={pickImage}><Icon name="image" /></button>
+  <button class="tool" title="Image" onclick={pickImage}><Icon name="image" /><span>I</span></button>
   <span class="sep"></span>
   <button title="Undo (⌘Z)" onclick={undo}><Icon name="undo" /></button>
   <button title="Redo (⇧⌘Z)" onclick={redo}><Icon name="redo" /></button>
@@ -46,8 +47,23 @@
     margin: 0 4px;
     background: var(--line);
   }
+  .tool {
+    flex-direction: column;
+    gap: 1px;
+    width: 40px;
+    height: 44px;
+  }
+  .tool span {
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--muted);
+  }
   button.active {
     background: var(--accent);
     color: white;
+  }
+  button.active span {
+    color: rgb(255 255 255 / 0.8);
   }
 </style>

@@ -73,7 +73,7 @@
     if (app.tool === 'line' || app.tool === 'arrow') {
       checkpoint()
       const from = endAt(p)
-      const nid = addLine(isNode(from) ? from.node : from, snapP(p), app.tool === 'arrow')
+      const nid = addLine(isNode(from) ? from.node : from, snapP(p), app.tool)
       app.selection = [nid]
       drag = { kind: 'end', id: nid, which: 'to' }
       return

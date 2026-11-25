@@ -1,54 +1,89 @@
 <script lang="ts">
   import ColorPicker from './ColorPicker.svelte'
-  import { find, PT_PER_CM } from './geometry'
-  import { app, checkpoint } from './state.svelte'
-  import { arrows, fonts, type Arrow, type Style } from './types'
+  import { arrowHead, find, PT_PER_CM } from './geometry'
+  import NumberInput from './NumberInput.svelte'
+  import Select from './Select.svelte'
+  import { app, checkpoint, type DrawTool } from './state.svelte'
+  import { arrows, fonts, type Arrow, type Line, type Style } from './types'
 
-  const items = $derived(app.selection.map((id) => find(app.diagram, id)).filter((e) => e !== undefined))
-  const first = $derived(items[0])
-  const s = $derived(first?.style)
-  const isPlain = (e: (typeof items)[number]) => e.type === 'shape' && (e.shape === 'text' || e.shape === 'image')
-  const hasStroke = $derived(items.some((e) => !isPlain(e)))
-  const hasShapes = $derived(items.some((e) => e.type === 'shape' && !isPlain(e)))
-  const hasRects = $derived(items.some((e) => e.type === 'shape' && e.shape === 'rect'))
-  const hasLines = $derived(items.some((e) => e.type === 'line'))
-  const hasText = $derived(items.some((e) => !(e.type === 'shape' && e.shape === 'image')))
+  type Kind = 'rect' | 'shape' | 'text' | 'image' | 'line'
+  type Target = { style: Style; kind: Kind; line?: Line }
+
+  const kindOf: Record<DrawTool, Kind> = {
+    rect: 'rect',
+    ellipse: 'shape',
+    diamond: 'shape',
+    text: 'text',
+    line: 'line',
+    arrow: 'line',
+  }
+
+  /** The selection, or the active tool's defaults when nothing is selected. */
+  const targets = $derived.by((): Target[] => {
+    if (app.selection.length) {
+      return app.selection
+        .map((id) => find(app.diagram, id))
+        .filter((e) => e !== undefined)
+        .map((e) =>
+          e.type === 'line'
+            ? { style: e.style, kind: 'line', line: e }
+            : { style: e.style, kind: e.shape === 'rect' ? 'rect' : e.shape === 'ellipse' || e.shape === 'diamond' ? 'shape' : e.shape },
+        )
+    }
+    if (app.tool === 'select' || app.tool === 'image') return []
+    return [{ style: app.defaults[app.tool], kind: kindOf[app.tool] }]
+  })
+  const editingDefaults = $derived(!app.selection.length)
+  const s = $derived(targets[0]?.style)
+  const has = (...kinds: Kind[]) => targets.some((t) => kinds.includes(t.kind))
+  const lines = $derived(targets.flatMap((t) => (t.line ? [t.line] : [])))
+
+  function change(f: () => void) {
+    if (!editingDefaults) checkpoint()
+    f()
+  }
 
   function set<K extends keyof Style>(key: K, value: Style[K]) {
-    checkpoint()
-    for (const e of items) e.style[key] = value
+    change(() => targets.forEach((t) => (t.style[key] = value)))
   }
 
   function direction(start: boolean, end: boolean) {
-    checkpoint()
-    for (const e of items) {
-      if (e.type !== 'line') continue
-      const head = e.style.end !== 'none' ? e.style.end : e.style.start !== 'none' ? e.style.start : 'stealth'
-      e.style.start = start ? head : 'none'
-      e.style.end = end ? head : 'none'
-    }
+    change(() => {
+      for (const t of targets) {
+        if (t.kind !== 'line') continue
+        const st = t.style
+        const head = st.end !== 'none' ? st.end : st.start !== 'none' ? st.start : 'stealth'
+        st.start = start ? head : 'none'
+        st.end = end ? head : 'none'
+      }
+    })
   }
 
-  function toggleCurved() {
-    checkpoint()
-    for (const e of items) if (e.type === 'line') e.curved = !e.curved
-  }
+  const setCurved = (curved: boolean) => change(() => lines.forEach((l) => (l.curved = curved)))
 
-  const num = (e: Event) => +(e.target as HTMLInputElement).value
-  const round = (v: number) => Math.round(v * 10) / 10
+  const headOptions = (none: string) => arrows.map((a) => ({ value: a, label: a === 'none' ? none : a }))
+  const fontOptions = [{ value: '', label: 'Default font' }, ...fonts.map((f) => ({ value: f, label: f }))]
 </script>
 
-{#if first && s && (hasStroke || hasText)}
+{#snippet head(a: Arrow, name: string, flip = false)}
+  {@const h = arrowHead(a, { x: flip ? 3 : 25, y: 6 }, { x: flip ? 25 : 3, y: 6 }, 9)}
+  <svg width="28" height="12" viewBox="0 0 28 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round">
+    <path d="M3 6H25" />
+    {#if h.d}<path d={h.d} fill={h.filled ? 'currentColor' : 'none'} />{/if}
+  </svg>
+  <span>{name}</span>
+{/snippet}
+
+{#if s && targets.some((t) => t.kind !== 'image')}
   <div class="panel">
-    {#if hasStroke}
+    {#if editingDefaults}<div class="hint">New {app.tool}</div>{/if}
+
+    {#if has('rect', 'shape', 'line')}
       <section>
         <div class="row">
           <span class="label">Stroke</span>
           <ColorPicker value={s.stroke} allowNone onchange={(v) => set('stroke', v)} />
-          <label class="num">
-            <input type="number" min="0" step="0.25" value={s.width} onchange={(e) => set('width', Math.max(0, num(e)))} />
-            <span>pt</span>
-          </label>
+          <NumberInput label="Stroke width" value={s.width} step={0.25} onchange={(v) => set('width', v)} />
         </div>
         <div class="seg">
           {#each ['solid', 'dashed', 'dotted'] as const as dash}
@@ -58,29 +93,23 @@
       </section>
     {/if}
 
-    {#if hasShapes}
+    {#if has('rect', 'shape')}
       <section>
         <div class="row">
           <span class="label">Fill</span>
           <ColorPicker value={s.fill} allowNone onchange={(v) => set('fill', v)} />
-          {#if hasRects}
-            <span class="label right">Radius</span>
-            <label class="num">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={round(s.radius * PT_PER_CM)}
-                onchange={(e) => set('radius', Math.max(0, num(e)) / PT_PER_CM)}
-              />
-              <span>pt</span>
-            </label>
+          {#if has('rect')}
+            <NumberInput
+              label="Corner radius"
+              value={s.radius * PT_PER_CM}
+              onchange={(v) => set('radius', v / PT_PER_CM)}
+            />
           {/if}
         </div>
       </section>
     {/if}
 
-    {#if hasLines}
+    {#if has('line')}
       <section>
         <div class="row">
           <span class="label">Arrows</span>
@@ -92,35 +121,31 @@
           </div>
         </div>
         <div class="row">
-          <select value={s.start} onchange={(e) => set('start', (e.target as HTMLSelectElement).value as Arrow)} aria-label="Start head">
-            {#each arrows as a}<option value={a}>{a === 'none' ? 'No start' : a}</option>{/each}
-          </select>
-          <select value={s.end} onchange={(e) => set('end', (e.target as HTMLSelectElement).value as Arrow)} aria-label="End head">
-            {#each arrows as a}<option value={a}>{a === 'none' ? 'No end' : a}</option>{/each}
-          </select>
+          <Select label="Start head" value={s.start} options={headOptions('Start')} onchange={(v) => set('start', v)}>
+            {#snippet item(a, name)}{@render head(a, name, true)}{/snippet}
+          </Select>
+          <Select label="End head" value={s.end} options={headOptions('End')} onchange={(v) => set('end', v)}>
+            {#snippet item(a, name)}{@render head(a, name)}{/snippet}
+          </Select>
         </div>
-        <div class="seg">
-          <button class:on={first.type === 'line' && !first.curved} onclick={() => first.type === 'line' && first.curved && toggleCurved()}>Straight</button>
-          <button class:on={first.type === 'line' && first.curved} onclick={() => first.type === 'line' && !first.curved && toggleCurved()}>Curved</button>
-        </div>
+        {#if lines.length}
+          <div class="seg">
+            <button class:on={!lines[0].curved} onclick={() => setCurved(false)}>Straight</button>
+            <button class:on={lines[0].curved} onclick={() => setCurved(true)}>Curved</button>
+          </div>
+        {/if}
       </section>
     {/if}
 
-    {#if hasText}
+    {#if has('rect', 'shape', 'text', 'line')}
       <section>
         <div class="row">
           <span class="label">Text</span>
           <ColorPicker value={s.color} onchange={(v) => set('color', v ?? '#000000')} />
-          <label class="num">
-            <input type="number" min="1" step="1" value={s.size} onchange={(e) => set('size', Math.max(1, num(e)))} />
-            <span>pt</span>
-          </label>
+          <NumberInput label="Font size" value={s.size} min={1} onchange={(v) => set('size', v)} />
         </div>
         <div class="row">
-          <select class="grow" value={s.font ?? ''} onchange={(e) => set('font', (e.target as HTMLSelectElement).value || null)} aria-label="Font">
-            <option value="">Default font</option>
-            {#each fonts as f}<option value={f}>{f}</option>{/each}
-          </select>
+          <Select label="Font" value={s.font ?? ''} options={fontOptions} onchange={(v) => set('font', v || null)} />
           <div class="seg">
             <button class="b" class:on={s.bold} title="Bold" onclick={() => set('bold', !s.bold)}>B</button>
             <button class="i" class:on={s.italic} title="Italic" onclick={() => set('italic', !s.italic)}>I</button>
@@ -136,11 +161,18 @@
     position: absolute;
     top: 64px;
     right: 16px;
-    width: 248px;
+    width: 256px;
     padding: 4px 12px;
     background: var(--panel);
     border-radius: 14px;
     box-shadow: var(--shadow);
+  }
+  .hint {
+    padding: 8px 0 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    text-transform: capitalize;
   }
   section {
     display: flex;
@@ -157,51 +189,16 @@
     gap: 8px;
   }
   .label {
-    width: 48px;
+    width: 44px;
     font-size: 11px;
     font-weight: 600;
     color: var(--muted);
   }
-  .label.right {
-    width: auto;
-    margin-left: auto;
-  }
   .grow {
     flex: 1;
   }
-  .num {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    height: 28px;
-    padding: 0 8px 0 2px;
-    margin-left: auto;
-    border-radius: 7px;
-    background: var(--subtle);
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .num input {
-    width: 44px;
-    border: none;
-    background: transparent;
-    font: 12px var(--font);
-    color: var(--text);
-    text-align: right;
-    outline: none;
-  }
-  select {
-    flex: 1;
-    min-width: 0;
-    height: 28px;
-    padding: 0 6px;
-    border: none;
-    border-radius: 7px;
-    background: var(--subtle);
-    font: 12px var(--font);
-    color: var(--text);
+  .row :global(.value span) {
     text-transform: capitalize;
-    outline: none;
   }
   .seg {
     display: flex;

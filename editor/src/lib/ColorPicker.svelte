@@ -112,6 +112,7 @@
   }
   .row {
     display: flex;
+    min-width: 0;
     align-items: center;
     gap: 6px;
     font-size: 12px;
@@ -145,6 +146,8 @@
   }
   input[type='range'] {
     flex: 1;
+    min-width: 0;
+    width: 100%;
     accent-color: var(--accent);
   }
   .pct {

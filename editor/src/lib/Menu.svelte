@@ -23,17 +23,21 @@
 <div class="menu" role="menu" tabindex="-1" onpointerdown={(e) => e.stopPropagation()}>
   <button onclick={run(() => newDocument())}>New diagram<kbd>⌘N</kbd></button>
   <button onclick={run(pickFile)}>Open file…<kbd>⌘O</kbd></button>
-  <button onclick={run(() => download('cetz', 'typ'))}>Save as Typst<kbd>⌘S</kbd></button>
   <button class="expand" class:open={showExport} onclick={() => (showExport = !showExport)}>
     Export<Icon name="chevron" />
   </button>
   {#if showExport}
     <div class="sub">
       {#each exports as x}
-        <button onclick={run(() => download(x.format, x.ext))}>{x.label}<span>.{x.ext}</span></button>
+        <button onclick={run(() => download(x.format, x.ext))}>
+          {x.label}<span>{x.format === 'cetz' ? '⌘S' : `.${x.ext}`}</span>
+        </button>
       {/each}
     </div>
   {/if}
+  <button onclick={run(() => (app.showCode = !app.showCode))}>
+    {app.showCode ? 'Hide' : 'Show'} CeTZ code<kbd>⌘/</kbd>
+  </button>
   {#if app.recents.length}
     <div class="heading">Recent</div>
     <div class="recents">
@@ -119,8 +123,11 @@
     color: var(--text);
   }
   .del {
+    justify-content: center;
     width: 28px;
     min-width: 28px;
+    height: 28px;
+    margin-right: 2px;
     padding: 0;
     color: var(--muted);
     opacity: 0;
@@ -130,5 +137,6 @@
   }
   .del :global(svg) {
     width: 14px;
+    height: 14px;
   }
 </style>
