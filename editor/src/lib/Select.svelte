@@ -1,5 +1,6 @@
 <script lang="ts" generics="T extends string">
   import type { Snippet } from 'svelte'
+  import { float } from './float'
   import Icon from './Icon.svelte'
 
   let {
@@ -17,20 +18,21 @@
   } = $props()
 
   let open = $state(false)
+  let trigger = $state<HTMLButtonElement>()
   const current = $derived(options.find((o) => o.value === value) ?? options[0])
 </script>
 
 <svelte:window onpointerdown={() => (open = false)} onkeydown={(e) => e.key === 'Escape' && (open = false)} />
 
 <div class="select" role="presentation" onpointerdown={(e) => e.stopPropagation()}>
-  <button class="trigger" class:open aria-label={label} aria-haspopup="listbox" onclick={() => (open = !open)}>
+  <button bind:this={trigger} class="trigger" class:open aria-label={label} aria-haspopup="listbox" onclick={() => (open = !open)}>
     <span class="value">
       {#if item}{@render item(current.value, current.label)}{:else}{current.label}{/if}
     </span>
     <span class="chev"><Icon name="chevron" /></span>
   </button>
   {#if open}
-    <div class="list" role="listbox">
+    <div class="list" role="listbox" use:float={{ anchor: trigger!, matchWidth: true }}>
       {#each options as o}
         <button
           role="option"
@@ -83,11 +85,8 @@
     text-overflow: ellipsis;
   }
   .list {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    right: 0;
-    z-index: 25;
+    position: fixed;
+    z-index: 40;
     padding: 4px;
     display: flex;
     flex-direction: column;

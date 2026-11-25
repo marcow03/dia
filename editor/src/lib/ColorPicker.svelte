@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { float } from './float'
+
   let {
     value,
     allowNone = false,
@@ -13,6 +15,7 @@
   ]
 
   let open = $state(false)
+  let trigger = $state<HTMLButtonElement>()
   const rgb = $derived(value?.slice(0, 7) ?? '#000000')
   const alpha = $derived(value && value.length === 9 ? parseInt(value.slice(7), 16) / 255 : 1)
 
@@ -29,11 +32,11 @@
 <svelte:window onpointerdown={() => (open = false)} onkeydown={(e) => e.key === 'Escape' && (open = false)} />
 
 <div class="picker" role="presentation" onpointerdown={(e) => e.stopPropagation()}>
-  <button class="current" class:none={!value} aria-label="Pick color" onclick={() => (open = !open)}>
+  <button bind:this={trigger} class="current" class:none={!value} aria-label="Pick color" onclick={() => (open = !open)}>
     <span style:background={value ?? 'transparent'}></span>
   </button>
   {#if open}
-    <div class="pop">
+    <div class="pop" use:float={{ anchor: trigger! }}>
       <div class="grid">
         {#each palette as c}
           <button class="sw" class:on={rgb === c && value} style:--c={c} aria-label={c} onclick={() => emit(c, alpha)}></button>
@@ -77,10 +80,8 @@
     background: linear-gradient(to top right, transparent 46%, #ff3b30 46% 54%, transparent 54%) !important;
   }
   .pop {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    z-index: 20;
+    position: fixed;
+    z-index: 40;
     width: 220px;
     padding: 10px;
     display: flex;
@@ -119,13 +120,27 @@
     color: var(--muted);
   }
   input[type='color'] {
+    flex: none;
     width: 28px;
     height: 28px;
     padding: 0;
     border: none;
     border-radius: 6px;
+    overflow: hidden;
     background: none;
     cursor: pointer;
+  }
+  input[type='color']::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  input[type='color']::-webkit-color-swatch {
+    border: none;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.12);
+  }
+  input[type='color']::-moz-color-swatch {
+    border: none;
+    border-radius: 6px;
   }
   .hex {
     flex: 1;
