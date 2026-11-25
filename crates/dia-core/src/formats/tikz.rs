@@ -73,7 +73,7 @@ pub fn write(d: &Diagram) -> String {
                     "minimum width={}cm, minimum height={}cm, inner sep=0pt, align={}",
                     num(*w),
                     num(*h),
-                    if *shape == ShapeKind::Text { "left" } else { "center" }
+                    e.style.align.name()
                 ));
                 writeln!(
                     out,
@@ -102,7 +102,7 @@ pub fn write(d: &Diagram) -> String {
                         Some(LabelAt::Along { t }) => format!("pos={}", num(t)),
                         _ => "midway".into(),
                     };
-                    let mut node_opts = vec![pos, "fill=white".into()];
+                    let mut node_opts = vec![pos, "fill=white".into(), format!("align={}", e.style.align.name())];
                     text_opts(&e.style, &mut node_opts);
                     write!(path, " node[{}] {{{label}}}", node_opts.join(", ")).unwrap();
                 }
@@ -775,6 +775,7 @@ impl Reader<'_> {
                     s.end = arrow_from_tip(&k[i + 1..]);
                 }
                 ("text", c) => s.color = self.color(c).unwrap_or(s.color),
+                ("align", a) => s.align = Align::from_name(a).unwrap_or(s.align),
                 ("font", f) => {
                     s.bold = f.contains("\\bfseries") || f.contains("\\bf");
                     s.italic = f.contains("\\itshape") || f.contains("\\it") || f.contains("\\slshape");

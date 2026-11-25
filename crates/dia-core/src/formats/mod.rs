@@ -99,6 +99,7 @@ pub(crate) mod tests {
                         bold: true,
                         italic: true,
                         color: "#ff3b30".into(),
+                        align: Align::Right,
                         ..Style::default()
                     },
                 ),

@@ -102,6 +102,34 @@ pub enum End {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+pub enum Align {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+impl Align {
+    pub fn name(self) -> &'static str {
+        match self {
+            Align::Left => "left",
+            Align::Center => "center",
+            Align::Right => "right",
+        }
+    }
+
+    pub fn from_name(s: &str) -> Option<Align> {
+        match s {
+            "left" | "flush left" => Some(Align::Left),
+            "center" | "centre" => Some(Align::Center),
+            "right" | "flush right" => Some(Align::Right),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Dash {
     #[default]
     Solid,
@@ -130,6 +158,8 @@ pub struct Style {
     pub italic: bool,
     /// Label text color.
     pub color: String,
+    /// Alignment of the label's lines.
+    pub align: Align,
 }
 
 impl Default for Style {
@@ -147,6 +177,7 @@ impl Default for Style {
             bold: false,
             italic: false,
             color: "#000000".into(),
+            align: Align::Left,
         }
     }
 }

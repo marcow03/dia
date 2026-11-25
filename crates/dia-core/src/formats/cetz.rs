@@ -258,6 +258,14 @@ fn arrow_from_mark(m: &str) -> Arrow {
 }
 
 fn label_body(label: &str, s: &Style) -> String {
+    let body = styled_body(label, s);
+    match s.align {
+        Align::Left => body,
+        a => format!("align({}, {body})", a.name()),
+    }
+}
+
+fn styled_body(label: &str, s: &Style) -> String {
     if !s.has_text_style() {
         return format!("[{label}]");
     }
@@ -807,10 +815,11 @@ fn shape(shape: ShapeKind, a: Point, b: Point) -> Kind {
     }
 }
 
-/// The body of a `content` call: plain markup, `text(..)[markup]` or `image(..)`.
+/// The body of a `content` call: plain markup, `text(..)[markup]`, `align(..)` around those, or `image(..)`.
 enum Body {
     Text(String),
     Styled(String, Call),
+    Aligned(Align, Box<Body>),
     Image(String),
 }
 
@@ -825,6 +834,14 @@ impl Body {
                 });
                 Some(Body::Styled(text.unwrap_or_default(), c.clone()))
             }
+            Value::Call(f, c) if f == "align" => {
+                let align = match c.pos.first() {
+                    Some(Value::Ident(a)) => Align::from_name(a).unwrap_or_default(),
+                    _ => Align::Left,
+                };
+                let inner = c.pos.get(1).and_then(|v| Body::from_value(v, vars))?;
+                Some(Body::Aligned(align, Box::new(inner)))
+            }
             Value::Call(f, c) if f == "image" => match c.pos.first() {
                 Some(Value::Str(path)) => Some(Body::Image(path.clone())),
                 Some(Value::Ident(var)) => vars.get(var).map(|path| Body::Image(path.clone())),
@@ -837,12 +854,17 @@ impl Body {
     fn text(&self) -> &str {
         match self {
             Body::Text(t) | Body::Styled(t, _) => t,
+            Body::Aligned(_, inner) => inner.text(),
             Body::Image(_) => "",
         }
     }
 
     /// Applies text styling to `style` and returns the label markup.
     fn read_into(self, style: &mut Style) -> String {
+        if let Body::Aligned(align, inner) = self {
+            style.align = align;
+            return inner.read_into(style);
+        }
         let Body::Styled(text, c) = self else {
             return self.text().to_string();
         };

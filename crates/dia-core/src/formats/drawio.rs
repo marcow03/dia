@@ -65,7 +65,7 @@ pub fn write(d: &Diagram) -> String {
                     ShapeKind::Rect => style.push("rounded=0".to_string()),
                     ShapeKind::Ellipse => style.push("ellipse".into()),
                     ShapeKind::Diamond => style.push("rhombus".into()),
-                    ShapeKind::Text => style.push("text;align=left".into()),
+                    ShapeKind::Text => style.push(format!("text;align={}", s.align.name())),
                     // `;` separates style entries, so drawio writes data URLs without `;base64`.
                     ShapeKind::Image => style.push(format!(
                         "shape=image;imageAspect=0;image={}",
@@ -327,6 +327,9 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
             );
             if plain {
                 style.stroke = alpha(color(get("strokeColor"), None), "strokeOpacity");
+            }
+            if shape == ShapeKind::Text {
+                style.align = get("align").and_then(Align::from_name).unwrap_or(Align::Center);
             }
             let src = match get("image") {
                 Some(img) if shape == ShapeKind::Image => match img.strip_prefix("data:") {
