@@ -3,7 +3,7 @@
   import { bounds, find, linePoints, PX_PER_CM, shapeAt, snap } from './geometry'
   import { openFiles, readImage } from './files'
   import LabelEditor from './LabelEditor.svelte'
-  import { addLine, addShape, app, checkpoint, remove } from './state.svelte'
+  import { addLine, addShape, app, checkpoint, remove, zoomBy } from './state.svelte'
   import { isNode, type Element, type End, type Point, type Shape } from './types'
 
   type Drag =
@@ -18,6 +18,7 @@
   let svg: SVGSVGElement
   let drag = $state<Drag | null>(null)
   let hover = $state<string | null>(null)
+  let guides = $state<{ x1: number; y1: number; x2: number; y2: number }[]>([])
   let spaceDown = $state(false)
   // Pointer capture retargets dblclick to the svg, so remember what the press hit.
   let pressedId: string | undefined
@@ -43,7 +44,7 @@
     if (app.editing) return
     svg.setPointerCapture(ev.pointerId)
     const p = world(ev)
-    if (ev.button === 1 || spaceDown) {
+    if (ev.button === 1 || spaceDown || app.tool === 'hand') {
       drag = { kind: 'pan', sx: ev.clientX, sy: ev.clientY, vx: app.view.x, vy: app.view.y }
       return
     }
@@ -118,8 +119,7 @@
         app.view.y = drag.vy + ev.clientY - drag.sy
         break
       case 'move': {
-        const dx = snap(p.x - drag.start.x)
-        const dy = snap(p.y - drag.start.y)
+        const [dx, dy] = alignDelta(drag.orig, p.x - drag.start.x, p.y - drag.start.y)
         const shift = (q: Point) => ({ x: q.x + dx, y: q.y + dy })
         for (const o of drag.orig) {
           const el = find(d, o.id)
@@ -209,6 +209,7 @@
     }
     drag = null
     hover = null
+    guides = []
   }
 
   function dblclick(ev: MouseEvent) {
@@ -225,14 +226,59 @@
     app.editing = nid
   }
 
+  /**
+   * Snaps a move so the moved shapes' edges or centers line up with other shapes,
+   * falling back to the grid. Sets the guide lines to draw.
+   */
+  function alignDelta(orig: Element[], rawX: number, rawY: number): [number, number] {
+    const moving = orig.filter((o) => o.type === 'shape') as Shape[]
+    guides = []
+    if (!moving.length) return [snap(rawX), snap(rawY)]
+    const ids = new Set(orig.map((o) => o.id))
+    const others = d.elements.filter((e): e is Shape => e.type === 'shape' && !ids.has(e.id))
+    const box = {
+      x: Math.min(...moving.map((m) => m.x)),
+      y: Math.min(...moving.map((m) => m.y)),
+      r: Math.max(...moving.map((m) => m.x + m.w)),
+      b: Math.max(...moving.map((m) => m.y + m.h)),
+    }
+    const tol = 6 / scale
+    const axis = (lo: number, hi: number, raw: number, edges: (s: Shape) => number[]) => {
+      let best: { delta: number; at: number } | null = null
+      for (const v of [lo, (lo + hi) / 2, hi]) {
+        for (const o of others) {
+          for (const t of edges(o)) {
+            const delta = t - v
+            if (Math.abs(delta - raw) < tol && (!best || Math.abs(delta - raw) < Math.abs(best.delta - raw)))
+              best = { delta, at: t }
+          }
+        }
+      }
+      return best
+    }
+    const bx = axis(box.x, box.r, rawX, (o) => [o.x, o.x + o.w / 2, o.x + o.w])
+    const by = axis(box.y, box.b, rawY, (o) => [o.y, o.y + o.h / 2, o.y + o.h])
+    const dx = bx ? bx.delta : snap(rawX)
+    const dy = by ? by.delta : snap(rawY)
+    const span = (a: number[], b: number[]) => [Math.min(...a, ...b) - 0.3, Math.max(...a, ...b) + 0.3]
+    const ys = others.flatMap((o) => [o.y, o.y + o.h])
+    const xs = others.flatMap((o) => [o.x, o.x + o.w])
+    if (bx) {
+      const [y1, y2] = span([box.y + dy, box.b + dy], ys)
+      guides.push({ x1: bx.at, y1, x2: bx.at, y2 })
+    }
+    if (by) {
+      const [x1, x2] = span([box.x + dx, box.r + dx], xs)
+      guides.push({ x1, y1: by.at, x2, y2: by.at })
+    }
+    return [dx, dy]
+  }
+
   function wheel(ev: WheelEvent) {
     ev.preventDefault()
     if (ev.ctrlKey || ev.metaKey) {
       const r = svg.getBoundingClientRect()
-      const [mx, my] = [ev.clientX - r.left, ev.clientY - r.top]
-      const zoom = Math.min(8, Math.max(0.1, app.view.zoom * Math.exp(-ev.deltaY * 0.01)))
-      const k = zoom / app.view.zoom
-      app.view = { x: mx - (mx - app.view.x) * k, y: my - (my - app.view.y) * k, zoom }
+      zoomBy(Math.exp(-ev.deltaY * 0.01), { x: ev.clientX - r.left, y: ev.clientY - r.top })
     } else {
       app.view.x -= ev.deltaX
       app.view.y -= ev.deltaY
@@ -262,8 +308,14 @@
       spaceDown = isDown
   }
 
+  // Svelte registers wheel listeners as passive, which would let the browser zoom the page.
+  $effect(() => {
+    svg.addEventListener('wheel', wheel, { passive: false })
+    return () => svg.removeEventListener('wheel', wheel)
+  })
+
   const cursor = $derived(
-    drag?.kind === 'pan' || spaceDown ? 'grabbing' : app.tool === 'select' ? 'default' : app.tool === 'text' ? 'text' : 'crosshair',
+    drag?.kind === 'pan' ? 'grabbing' : spaceDown || app.tool === 'hand' ? 'grab' : app.tool === 'select' ? 'default' : app.tool === 'text' ? 'text' : 'crosshair',
   )
   const grid = $derived(scale * 0.5)
 </script>
@@ -279,7 +331,6 @@
   onpointermove={move}
   onpointerup={up}
   ondblclick={dblclick}
-  onwheel={wheel}
   ondragover={(e) => e.preventDefault()}
   ondrop={drop}
 >
@@ -348,6 +399,10 @@
       {/if}
     {/each}
 
+    {#each guides as g}
+      <line class="guide" x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke-width={1 / scale} />
+    {/each}
+
     {#if drag?.kind === 'marquee'}
       {@const r = rectOf(drag.start, drag.now)}
       <rect class="marquee" x={r.x} y={r.y} width={r.w} height={r.h} stroke-width={1 / scale} />
@@ -394,6 +449,10 @@
   }
   .dot {
     fill: var(--accent);
+    pointer-events: none;
+  }
+  .guide {
+    stroke: #ff2d55;
     pointer-events: none;
   }
   .marquee {

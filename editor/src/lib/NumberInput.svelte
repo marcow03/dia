@@ -5,14 +5,24 @@
     step = 1,
     min = 0,
     unit = 'pt',
+    prefix,
     label,
-  }: { value: number; onchange: (v: number) => void; step?: number; min?: number; unit?: string; label: string } = $props()
+  }: {
+    value: number
+    onchange: (v: number) => void
+    step?: number
+    min?: number
+    unit?: string
+    prefix?: string
+    label: string
+  } = $props()
 
   const round = (v: number) => Math.round(v * 100) / 100
   const commit = (v: number) => Number.isFinite(v) && onchange(round(Math.max(min, v)))
 </script>
 
-<div class="number">
+<div class="number" title={label}>
+  {#if prefix}<span class="prefix">{prefix}</span>{/if}
   <button aria-label="Decrease {label}" onclick={() => commit(value - step)}>−</button>
   <input
     aria-label={label}
@@ -54,6 +64,10 @@
   button:hover {
     background: var(--line);
     color: var(--text);
+  }
+  .prefix {
+    padding-left: 8px;
+    font-weight: 600;
   }
   input {
     width: 30px;

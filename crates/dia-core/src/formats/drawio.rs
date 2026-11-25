@@ -215,7 +215,7 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
                 &color(get("fontColor"), Some("#000000")).unwrap(),
                 opacity("textOpacity"),
             ),
-            size: get("fontSize").and_then(|v| v.parse().ok()).unwrap_or(11.0),
+            size: get("fontSize").and_then(|v| v.parse().ok()).unwrap_or(12.0),
             bold: get("fontStyle")
                 .and_then(|v| v.parse::<u8>().ok())
                 .is_some_and(|f| f & 1 != 0),

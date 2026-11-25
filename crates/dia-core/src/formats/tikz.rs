@@ -14,7 +14,7 @@ pub const FORMAT: Format = Format {
 
 pub fn write(d: &Diagram) -> String {
     let mut out = String::from(
-        "\\documentclass[tikz]{standalone}\n\\usetikzlibrary{shapes.geometric, arrows.meta}\n\\begin{document}\n\\begin{tikzpicture}[line width=1pt]\n",
+        "\\documentclass[tikz]{standalone}\n\\usetikzlibrary{shapes.geometric, arrows.meta}\n\\begin{document}\n\\begin{tikzpicture}[line width=1pt, font=\\fontsize{14}{17}\\selectfont]\n",
     );
     for e in &d.elements {
         let label = typst_to_latex(&e.label);

@@ -1,7 +1,7 @@
 # 008: Text style, arrowheads, transparency and images
 
 ## Decision
-- **Text style** lives in `Style`: `font`, `size` (pt), `bold`, `italic`, `color`. How each format writes it:
+- **Text style** lives in `Style`: `font`, `size` (pt, default 14), `bold`, `italic`, `color`. The 14pt default is stated once per document (CeTZ `#set text(size: 14pt)`, a TikZ picture-wide `font=\fontsize{14}{17}`, drawio's explicit `fontSize`), so writers only emit sizes that differ from it. How each format writes it:
   - CeTZ: `text(font:, size:, weight:, style:, fill:)[label]`
   - TikZ: `font=\bfseries\itshape\fontsize{..}{..}\selectfont`, `text=`. The font family is not exported, because LaTeX font names don't map to Typst's.
   - drawio: `fontSize`, `fontStyle` bitmask, `fontColor`, `fontFamily`.

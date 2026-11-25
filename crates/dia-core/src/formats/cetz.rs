@@ -16,7 +16,7 @@ pub const CETZ_VERSION: &str = "0.5.3";
 
 pub fn write(d: &Diagram) -> String {
     let mut out =
-        format!("#import \"@preview/cetz:{CETZ_VERSION}\"\n#set page(width: auto, height: auto, margin: 0.5cm)\n\n");
+        format!("#import \"@preview/cetz:{CETZ_VERSION}\"\n#set page(width: auto, height: auto, margin: 0.5cm)\n#set text(size: 14pt)\n\n");
     for e in &d.elements {
         if let Kind::Shape {
             shape: ShapeKind::Image,

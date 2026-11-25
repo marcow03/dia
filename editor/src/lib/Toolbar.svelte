@@ -5,6 +5,7 @@
 
   const tools: [Tool, string, string][] = [
     ['select', 'Select', 'V'],
+    ['hand', 'Hand', 'H'],
     ['rect', 'Rectangle', 'R'],
     ['ellipse', 'Ellipse', 'O'],
     ['diamond', 'Diamond', 'D'],
@@ -16,12 +17,15 @@
 
 <div class="bar">
   {#each tools as [tool, title, key]}
-    <button class="tool" class:active={app.tool === tool} title={title} onclick={() => (app.tool = tool)}>
-      <Icon name={tool} />
+    <div class="tool">
+      <button class:active={app.tool === tool} {title} onclick={() => (app.tool = tool)}><Icon name={tool} /></button>
       <span>{key}</span>
-    </button>
+    </div>
   {/each}
-  <button class="tool" title="Image" onclick={pickImage}><Icon name="image" /><span>I</span></button>
+  <div class="tool">
+    <button title="Image" onclick={pickImage}><Icon name="image" /></button>
+    <span>I</span>
+  </div>
   <span class="sep"></span>
   <button title="Undo (⌘Z)" onclick={undo}><Icon name="undo" /></button>
   <button title="Redo (⇧⌘Z)" onclick={redo}><Icon name="redo" /></button>
@@ -34,9 +38,9 @@
     bottom: 20px;
     transform: translateX(-50%);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 2px;
-    padding: 5px;
+    padding: 6px 6px 5px;
     background: var(--panel);
     border-radius: 14px;
     box-shadow: var(--shadow);
@@ -44,26 +48,23 @@
   .sep {
     width: 1px;
     height: 20px;
-    margin: 0 4px;
+    margin: 7px 4px 0;
     background: var(--line);
   }
   .tool {
+    display: flex;
     flex-direction: column;
-    gap: 1px;
-    width: 40px;
-    height: 44px;
+    align-items: center;
+    gap: 5px;
   }
   .tool span {
     font-size: 9px;
     font-weight: 600;
     line-height: 1;
-    color: var(--muted);
+    color: #a1a1a6;
   }
   button.active {
     background: var(--accent);
     color: white;
-  }
-  button.active span {
-    color: rgb(255 255 255 / 0.8);
   }
 </style>

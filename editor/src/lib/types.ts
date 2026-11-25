@@ -37,7 +37,7 @@ export const defaultStyle = (): Style => ({
   start: 'none',
   end: 'none',
   font: null,
-  size: 11,
+  size: 14,
   bold: false,
   italic: false,
   color: '#000000',

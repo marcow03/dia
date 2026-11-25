@@ -1,5 +1,6 @@
 #import "@preview/cetz:0.5.3"
 #set page(width: auto, height: auto, margin: 0.5cm)
+#set text(size: 14pt)
 
 #let image-i1 = "logo.png"
 
@@ -11,7 +12,7 @@
   content("n2", [$x^2 + y^2$])
   polygon((6.5, -3.75), 4, radius: (1.5, 0.75), name: "n3", stroke: (paint: rgb("#1e88e5"), thickness: 2pt))
   content("n3", [ok?])
-  content((0, -3), (3, -4.5), text(size: 14pt, weight: "bold", style: "italic", fill: rgb("#ff3b30"))[note], name: "t1")
+  content((0, -3), (3, -4.5), text(weight: "bold", style: "italic", fill: rgb("#ff3b30"))[note], name: "t1")
   content((10, 0), (12, -1), image(image-i1, width: 2cm, height: 1cm, fit: "stretch"), name: "i1")
   line((name: "n1", anchor: 0deg), (name: "n2", anchor: -180deg), name: "e1", mark: (end: "stealth", fill: rgb("#000000")))
   content("e1.mid", [$alpha$], frame: "rect", fill: white, stroke: none, padding: 0.1)

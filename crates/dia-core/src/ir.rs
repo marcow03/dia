@@ -121,7 +121,7 @@ impl Default for Style {
             start: Arrow::None,
             end: Arrow::None,
             font: None,
-            size: 11.0,
+            size: 14.0,
             bold: false,
             italic: false,
             color: "#000000".into(),

@@ -12,6 +12,9 @@
     duplicate,
     loadDocuments,
     newDocument,
+    zoomBy,
+    zoomTo,
+    zoomToFit,
     paste,
     redo,
     remove,
@@ -21,6 +24,7 @@
   } from './lib/state.svelte'
   import StylePanel from './lib/StylePanel.svelte'
   import Toolbar from './lib/Toolbar.svelte'
+  import ZoomControls from './lib/ZoomControls.svelte'
   import { find } from './lib/geometry'
 
   let menuOpen = $state(false)
@@ -28,6 +32,7 @@
 
   const toolKeys: Record<string, Tool> = {
     v: 'select',
+    h: 'hand',
     r: 'rect',
     o: 'ellipse',
     d: 'diamond',
@@ -54,6 +59,9 @@
     else if (mod && k === 'o') pickFile()
     else if (mod && k === 'n') newDocument()
     else if (mod && k === '/') app.showCode = !app.showCode
+    else if (mod && (k === '=' || k === '+')) zoomBy(1.25)
+    else if (mod && k === '-') zoomBy(1 / 1.25)
+    else if (mod && k === '0') zoomTo(1)
     else if (mod) return
     else if (k === 'backspace' || k === 'delete') {
       if (!app.selection.length) return
@@ -65,6 +73,7 @@
     } else if (k === 'enter' && app.selection.length === 1) app.editing = app.selection[0]
     else if (k.startsWith('arrow') && app.selection.length) nudge(k, e.shiftKey ? 1 : 0.25)
     else if (k === 'i') pickImage()
+    else if (e.shiftKey && e.code === 'Digit1') zoomToFit()
     else if (toolKeys[k]) app.tool = toolKeys[k]
     else return
     e.preventDefault()
@@ -121,6 +130,7 @@
     </header>
     <StylePanel />
     <Toolbar />
+    <ZoomControls />
     {#if app.showCode}<CodePanel />{/if}
     {#if app.diagram.elements.length === 0}
       <p class="empty">Pick a tool below, or double-click anywhere to write Typst.<br />Drop a .typ, .tex or .drawio file or an image here.</p>

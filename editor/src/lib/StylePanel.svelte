@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { align, distribute, matchSize, type Align } from './arrange'
   import ColorPicker from './ColorPicker.svelte'
+  import Icon from './Icon.svelte'
   import { arrowHead, find, PT_PER_CM } from './geometry'
   import NumberInput from './NumberInput.svelte'
   import Select from './Select.svelte'
@@ -30,7 +32,7 @@
             : { style: e.style, kind: e.shape === 'rect' ? 'rect' : e.shape === 'ellipse' || e.shape === 'diamond' ? 'shape' : e.shape },
         )
     }
-    if (app.tool === 'select' || app.tool === 'image') return []
+    if (app.tool === 'select' || app.tool === 'hand' || app.tool === 'image') return []
     return [{ style: app.defaults[app.tool], kind: kindOf[app.tool] }]
   })
   const editingDefaults = $derived(!app.selection.length)
@@ -43,8 +45,16 @@
     f()
   }
 
+  /** Keys shared by all tools: setting them once updates every tool's defaults. */
+  const shared: (keyof Style)[] = ['stroke', 'fill', 'width', 'dash', 'font', 'size', 'bold', 'italic', 'color']
+  const textOnly: (keyof Style)[] = ['font', 'size', 'bold', 'italic', 'color']
+
   function set<K extends keyof Style>(key: K, value: Style[K]) {
     change(() => targets.forEach((t) => (t.style[key] = value)))
+    if (!shared.includes(key)) return
+    for (const [tool, style] of Object.entries(app.defaults)) {
+      if (tool !== 'text' || textOnly.includes(key)) style[key] = value
+    }
   }
 
   function direction(start: boolean, end: boolean) {
@@ -61,6 +71,16 @@
 
   const setCurved = (curved: boolean) => change(() => lines.forEach((l) => (l.curved = curved)))
 
+  const shapeCount = $derived(targets.filter((t) => t.kind !== 'line').length)
+  const alignments: [Align, string, string][] = [
+    ['left', 'alignLeft', 'Align left'],
+    ['center', 'alignCenter', 'Align centers horizontally'],
+    ['right', 'alignRight', 'Align right'],
+    ['top', 'alignTop', 'Align top'],
+    ['middle', 'alignMiddle', 'Align centers vertically'],
+    ['bottom', 'alignBottom', 'Align bottom'],
+  ]
+
   const headOptions = (none: string) => arrows.map((a) => ({ value: a, label: a === 'none' ? none : a }))
   const fontOptions = [{ value: '', label: 'Default font' }, ...fonts.map((f) => ({ value: f, label: f }))]
 </script>
@@ -74,9 +94,25 @@
   <span>{name}</span>
 {/snippet}
 
-{#if s && targets.some((t) => t.kind !== 'image')}
+{#if s && (targets.some((t) => t.kind !== 'image') || shapeCount >= 2)}
   <div class="panel">
     {#if editingDefaults}<div class="hint">New {app.tool}</div>{/if}
+
+    {#if !editingDefaults && shapeCount >= 2}
+      <section>
+        <div class="icons">
+          {#each alignments as [how, icon, title]}
+            <button {title} onclick={() => align(how)}><Icon name={icon} /></button>
+          {/each}
+        </div>
+        <div class="icons">
+          <button title="Equal horizontal gaps" disabled={shapeCount < 3} onclick={() => distribute('x')}><Icon name="distributeH" /></button>
+          <button title="Equal vertical gaps" disabled={shapeCount < 3} onclick={() => distribute('y')}><Icon name="distributeV" /></button>
+          <button title="Same width" onclick={() => matchSize('w')}><Icon name="sameWidth" /></button>
+          <button title="Same height" onclick={() => matchSize('h')}><Icon name="sameHeight" /></button>
+        </div>
+      </section>
+    {/if}
 
     {#if has('rect', 'shape', 'line')}
       <section>
@@ -101,6 +137,7 @@
           {#if has('rect')}
             <NumberInput
               label="Corner radius"
+              prefix="R"
               value={s.radius * PT_PER_CM}
               onchange={(v) => set('radius', v / PT_PER_CM)}
             />
@@ -159,7 +196,7 @@
 <style>
   .panel {
     position: absolute;
-    top: 64px;
+    top: 12px;
     right: 16px;
     width: 256px;
     padding: 4px 12px;
@@ -218,6 +255,21 @@
   .seg button.on {
     background: var(--panel);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  }
+  .icons {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    justify-items: center;
+  }
+  .icons button {
+    min-width: 0;
+    width: 34px;
+    height: 30px;
+    color: var(--text);
+  }
+  .icons button:disabled {
+    opacity: 0.3;
+    cursor: default;
   }
   .b {
     font-weight: 700;

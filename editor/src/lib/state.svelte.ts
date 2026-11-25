@@ -1,12 +1,12 @@
-import { endCenter, find } from './geometry'
+import { bounds, endCenter, find, PX_PER_CM } from './geometry'
 import { deleteDoc, listDocs, loadDoc, saveDoc, type DocMeta } from './docs'
 import { defaultStyle, isNode, type Diagram, type Element, type Point, type ShapeKind, type Style } from './types'
 
-export type Tool = 'select' | ShapeKind | 'line' | 'arrow'
-export type DrawTool = Exclude<Tool, 'select' | 'image'>
+export type Tool = 'select' | 'hand' | ShapeKind | 'line' | 'arrow'
+export type DrawTool = Exclude<Tool, 'select' | 'hand' | 'image'>
 
 const CURRENT_KEY = 'dia:current'
-const DEFAULTS_KEY = 'dia:defaults'
+const DEFAULTS_KEY = 'dia:tool-defaults'
 
 function toolDefaults(): Record<DrawTool, Style> {
   const d = () => defaultStyle()
@@ -193,6 +193,31 @@ export function duplicate() {
 
 export function selectAll() {
   app.selection = app.diagram.elements.map((e) => e.id)
+}
+
+/** Zooms by `factor` keeping the screen point `at` (default: window center) fixed. */
+export function zoomBy(factor: number, at = { x: innerWidth / 2, y: innerHeight / 2 }) {
+  const zoom = Math.min(8, Math.max(0.1, app.view.zoom * factor))
+  const k = zoom / app.view.zoom
+  app.view = { x: at.x - (at.x - app.view.x) * k, y: at.y - (at.y - app.view.y) * k, zoom }
+}
+
+export function zoomTo(zoom: number) {
+  zoomBy(zoom / app.view.zoom)
+}
+
+/** Fits all elements into the window. */
+export function zoomToFit() {
+  const bs = app.diagram.elements.map((e) => bounds(app.diagram, e))
+  if (!bs.length) return (app.view = { x: 80, y: 80, zoom: 1 })
+  const x = Math.min(...bs.map((b) => b.x))
+  const y = Math.min(...bs.map((b) => b.y))
+  const w = Math.max(...bs.map((b) => b.x + b.w)) - x
+  const h = Math.max(...bs.map((b) => b.y + b.h)) - y
+  const pad = 120
+  const zoom = Math.min(4, Math.max(0.1, Math.min((innerWidth - 2 * pad) / w, (innerHeight - 2 * pad) / h) / PX_PER_CM))
+  const s = zoom * PX_PER_CM
+  app.view = { x: innerWidth / 2 - (x + w / 2) * s, y: innerHeight / 2 - (y + h / 2) * s, zoom }
 }
 
 let toastTimer: ReturnType<typeof setTimeout>
