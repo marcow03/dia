@@ -1,15 +1,21 @@
 <script lang="ts">
   import { PT_PER_CM } from './geometry'
   import { renderLabel, type Rendered } from './typst'
+  import type { Style } from './types'
 
-  let { source, cx, cy, background = false }: { source: string; cx: number; cy: number; background?: boolean } = $props()
+  let {
+    source,
+    style,
+    cx,
+    cy,
+    background = false,
+  }: { source: string; style: Style; cx: number; cy: number; background?: boolean } = $props()
 
   let result = $state<Rendered | null>(null)
 
   $effect(() => {
-    const s = source
     let current = true
-    renderLabel(s).then((r) => current && (result = r))
+    renderLabel(source, style).then((r) => current && (result = r))
     return () => (current = false)
   })
 

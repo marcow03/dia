@@ -1,6 +1,7 @@
 <script lang="ts">
   import ElementView from './ElementView.svelte'
   import { bounds, find, linePoints, PX_PER_CM, shapeAt, snap } from './geometry'
+  import { openFiles, readImage } from './files'
   import LabelEditor from './LabelEditor.svelte'
   import { addLine, addShape, app, checkpoint, remove } from './state.svelte'
   import { isNode, type Element, type End, type Point, type Shape } from './types'
@@ -69,10 +70,10 @@
       app.tool = 'select'
       return
     }
-    if (app.tool === 'line') {
+    if (app.tool === 'line' || app.tool === 'arrow') {
       checkpoint()
       const from = endAt(p)
-      const nid = addLine(isNode(from) ? from.node : from, snapP(p))
+      const nid = addLine(isNode(from) ? from.node : from, snapP(p), app.tool === 'arrow')
       app.selection = [nid]
       drag = { kind: 'end', id: nid, which: 'to' }
       return
@@ -108,7 +109,7 @@
   function move(ev: PointerEvent) {
     const p = world(ev)
     if (!drag) {
-      hover = app.tool === 'line' ? (shapeAt(d, p)?.id ?? null) : null
+      hover = app.tool === 'line' || app.tool === 'arrow' ? (shapeAt(d, p)?.id ?? null) : null
       return
     }
     switch (drag.kind) {
@@ -144,6 +145,10 @@
         el.y = Math.min(fy, q.y)
         el.w = Math.max(Math.abs(q.x - fx), 0.25)
         el.h = Math.max(Math.abs(q.y - fy), 0.25)
+        if (el.shape === 'image') {
+          el.h = (el.w * o.h) / o.w
+          if (drag.corner.includes('n')) el.y = fy - el.h
+        }
         break
       }
       case 'create': {
@@ -194,7 +199,7 @@
       }
       app.tool = 'select'
     }
-    if (drag?.kind === 'end' && app.tool === 'line') {
+    if (drag?.kind === 'end' && (app.tool === 'line' || app.tool === 'arrow')) {
       const el = find(d, drag.id)
       if (el?.type === 'line') {
         const [a, b] = linePoints(d, el)
@@ -238,6 +243,20 @@
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) }
   }
 
+  async function drop(ev: DragEvent) {
+    ev.preventDefault()
+    const files = [...(ev.dataTransfer?.files ?? [])]
+    const images = files.filter((f) => f.type.startsWith('image/'))
+    if (!images.length) return files.length && openFiles(files)
+    checkpoint()
+    let p = world(ev)
+    for (const file of images) {
+      const { src, w, h } = await readImage(file)
+      app.selection = [addShape('image', snap(p.x - w / 2), snap(p.y - h / 2), w, h, src)]
+      p = { x: p.x + 0.5, y: p.y + 0.5 }
+    }
+  }
+
   function keys(ev: KeyboardEvent, isDown: boolean) {
     if (ev.code === 'Space' && !(ev.target instanceof HTMLTextAreaElement || ev.target instanceof HTMLInputElement))
       spaceDown = isDown
@@ -261,6 +280,8 @@
   onpointerup={up}
   ondblclick={dblclick}
   onwheel={wheel}
+  ondragover={(e) => e.preventDefault()}
+  ondrop={drop}
 >
   <defs>
     <pattern id="grid" width={grid} height={grid} patternUnits="userSpaceOnUse" x={app.view.x} y={app.view.y}>

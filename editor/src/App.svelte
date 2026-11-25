@@ -2,16 +2,39 @@
   import Canvas from './lib/Canvas.svelte'
   import CodePanel from './lib/CodePanel.svelte'
   import { ready } from './lib/core'
-  import { download, exports, openFile, pickFile } from './lib/files'
+  import { download, pickFile, pickImage } from './lib/files'
   import Icon from './lib/Icon.svelte'
-  import { app, checkpoint, copy, duplicate, paste, redo, remove, selectAll, setDiagram, undo, type Tool } from './lib/state.svelte'
+  import Menu from './lib/Menu.svelte'
+  import {
+    app,
+    checkpoint,
+    copy,
+    duplicate,
+    loadDocuments,
+    newDocument,
+    paste,
+    redo,
+    remove,
+    selectAll,
+    undo,
+    type Tool,
+  } from './lib/state.svelte'
   import StylePanel from './lib/StylePanel.svelte'
   import Toolbar from './lib/Toolbar.svelte'
   import { find } from './lib/geometry'
 
-  let exportOpen = $state(false)
+  let menuOpen = $state(false)
+  const loaded = Promise.all([ready, loadDocuments()])
 
-  const toolKeys: Record<string, Tool> = { v: 'select', r: 'rect', o: 'ellipse', d: 'diamond', a: 'line', t: 'text' }
+  const toolKeys: Record<string, Tool> = {
+    v: 'select',
+    r: 'rect',
+    o: 'ellipse',
+    d: 'diamond',
+    l: 'line',
+    a: 'arrow',
+    t: 'text',
+  }
 
   function keydown(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
@@ -29,6 +52,7 @@
     else if (mod && k === 'a') selectAll()
     else if (mod && k === 's') download('cetz', 'typ')
     else if (mod && k === 'o') pickFile()
+    else if (mod && k === 'n') newDocument()
     else if (mod) return
     else if (k === 'backspace' || k === 'delete') {
       if (!app.selection.length) return
@@ -39,6 +63,7 @@
       app.tool = 'select'
     } else if (k === 'enter' && app.selection.length === 1) app.editing = app.selection[0]
     else if (k.startsWith('arrow') && app.selection.length) nudge(k, e.shiftKey ? 1 : 0.25)
+    else if (k === 'i') pickImage()
     else if (toolKeys[k]) app.tool = toolKeys[k]
     else return
     e.preventDefault()
@@ -60,49 +85,39 @@
     }
   }
 
-  function drop(e: DragEvent) {
-    e.preventDefault()
-    const file = e.dataTransfer?.files[0]
-    if (file) openFile(file)
-  }
-
-  function clear() {
-    setDiagram({ elements: [] }, 'untitled')
+  function focusName(e: FocusEvent) {
+    if (app.name === 'untitled') app.name = ''
+    ;(e.target as HTMLInputElement).select()
   }
 </script>
 
-<svelte:window onkeydown={keydown} onpointerdown={() => (exportOpen = false)} />
+<svelte:window onkeydown={keydown} onpointerdown={() => (menuOpen = false)} />
 
-<main ondragover={(e) => e.preventDefault()} ondrop={drop}>
-  {#await ready}
+<main>
+  {#await loaded}
     <div class="loading">Loading…</div>
   {:then}
     <Canvas />
     <header class="top">
       <div class="title">
+        <div class="menu-anchor" role="presentation" onpointerdown={(e) => e.stopPropagation()}>
+          <button class="icon" class:on={menuOpen} title="Menu" onclick={() => (menuOpen = !menuOpen)}>
+            <Icon name="menu" />
+          </button>
+          {#if menuOpen}<Menu onclose={() => (menuOpen = false)} />{/if}
+        </div>
         <span class="logo">dia</span>
-        <input bind:value={app.name} spellcheck="false" aria-label="Document name" />
+        <input
+          bind:value={app.name}
+          onfocus={focusName}
+          onblur={() => (app.name = app.name.trim() || 'untitled')}
+          onkeydown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          placeholder="untitled"
+          spellcheck="false"
+          aria-label="Document name"
+        />
       </div>
       <div class="actions">
-        <button onclick={clear}>New</button>
-        <button onclick={pickFile}>Open</button>
-        <button onclick={() => download('cetz', 'typ')}>Save</button>
-        <div class="menu" role="presentation" onpointerdown={(e) => e.stopPropagation()}>
-          <button class:on={exportOpen} onclick={() => (exportOpen = !exportOpen)}>
-            Export
-          </button>
-          {#if exportOpen}
-            <div class="dropdown">
-              {#each exports as x}
-                <button
-                  onclick={() => {
-                    exportOpen = false
-                    download(x.format, x.ext)
-                  }}>{x.label}<span>.{x.ext}</span></button>
-              {/each}
-            </div>
-          {/if}
-        </div>
         <button class="icon" class:on={app.showCode} title="Show CeTZ code" onclick={() => (app.showCode = !app.showCode)}>
           <Icon name="code" />
         </button>
@@ -112,7 +127,7 @@
     <Toolbar />
     {#if app.showCode}<CodePanel />{/if}
     {#if app.diagram.elements.length === 0}
-      <p class="empty">Pick a shape below, or double-click anywhere to write Typst.<br />Drop a .typ, .tex or .drawio file to open it.</p>
+      <p class="empty">Pick a tool below, or double-click anywhere to write Typst.<br />Drop a .typ, .tex or .drawio file or an image here.</p>
     {/if}
     {#if app.toast}<div class="toast">{app.toast}</div>{/if}
   {/await}
@@ -157,13 +172,16 @@
     border-radius: 12px;
     box-shadow: var(--shadow);
   }
+  .menu-anchor {
+    position: relative;
+  }
   .logo {
-    padding: 0 6px 0 8px;
+    padding: 0 12px 0 6px;
     font-weight: 700;
     letter-spacing: -0.02em;
   }
   .title input {
-    width: 160px;
+    width: 180px;
     height: 30px;
     padding: 0 8px;
     border: none;
@@ -173,43 +191,12 @@
     color: var(--muted);
     outline: none;
   }
+  .title input:hover {
+    background: var(--subtle);
+  }
   .title input:focus {
     background: var(--subtle);
     color: var(--text);
-  }
-  .actions > button,
-  .menu > button {
-    padding: 0 12px;
-    font-size: 13px;
-  }
-  .actions .icon {
-    padding: 0;
-  }
-  .menu {
-    position: relative;
-  }
-  .dropdown {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
-    min-width: 200px;
-    padding: 5px;
-    background: var(--panel);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-    display: flex;
-    flex-direction: column;
-  }
-  .dropdown button {
-    justify-content: space-between;
-    width: 100%;
-    padding: 0 10px;
-    font-size: 13px;
-  }
-  .dropdown span {
-    color: var(--muted);
-    font-family: var(--mono);
-    font-size: 11px;
   }
   .toast {
     position: absolute;

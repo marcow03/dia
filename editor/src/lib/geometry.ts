@@ -1,4 +1,4 @@
-import { isNode, type Diagram, type Element, type End, type Line, type Point, type Shape } from './types'
+import { isNode, type Arrow, type Diagram, type Element, type End, type Line, type Point, type Shape } from './types'
 
 export const PX_PER_CM = 40
 export const PT_PER_CM = 28.3465
@@ -65,10 +65,35 @@ export function arrowAt(d: Diagram, l: Line, atEnd: boolean): { tip: Point; from
   return atEnd ? { tip: p[p.length - 1], from: p[p.length - 2] } : { tip: p[0], from: p[1] }
 }
 
-export function arrowHead(tip: Point, from: Point, size: number): string {
+/** SVG path of an arrowhead; open heads are stroked, the rest filled. */
+export function arrowHead(kind: Arrow, tip: Point, from: Point, size: number): { d: string; filled: boolean } {
   const a = Math.atan2(tip.y - from.y, tip.x - from.x)
   const pt = (r: number, da: number) => `${tip.x - r * Math.cos(a + da)} ${tip.y - r * Math.sin(a + da)}`
-  return `M${tip.x} ${tip.y} L${pt(size, 0.4)} L${pt(size * 0.65, 0)} L${pt(size, -0.4)} Z`
+  const T = `${tip.x} ${tip.y}`
+  switch (kind) {
+    case 'stealth':
+      return { d: `M${T} L${pt(size, 0.4)} L${pt(size * 0.65, 0)} L${pt(size, -0.4)} Z`, filled: true }
+    case 'triangle':
+      return { d: `M${T} L${pt(size, 0.35)} L${pt(size, -0.35)} Z`, filled: true }
+    case 'open':
+      return { d: `M${pt(size, 0.45)} L${T} L${pt(size, -0.45)}`, filled: false }
+    case 'circle': {
+      const r = size / 3
+      return { d: `M${pt(0, 0)} A${r} ${r} 0 1 0 ${pt(2 * r, 0)} A${r} ${r} 0 1 0 ${pt(0, 0)} Z`, filled: true }
+    }
+    case 'diamond': {
+      const h = size / 2
+      const side = (s: number) => `${tip.x - h * Math.cos(a) + s * h * 0.5 * Math.sin(a)} ${tip.y - h * Math.sin(a) - s * h * 0.5 * Math.cos(a)}`
+      return { d: `M${T} L${side(1)} L${pt(size, 0)} L${side(-1)} Z`, filled: true }
+    }
+    case 'bar': {
+      const r = size / 2.5
+      const perp = (s: number) => `${tip.x + s * r * Math.sin(a)} ${tip.y - s * r * Math.cos(a)}`
+      return { d: `M${perp(1)} L${perp(-1)}`, filled: false }
+    }
+    default:
+      return { d: '', filled: false }
+  }
 }
 
 export function lineMid(d: Diagram, l: Line): Point {

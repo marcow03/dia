@@ -10,12 +10,13 @@
   let value = $state(initial)
   let area: HTMLTextAreaElement
 
+  const el = $derived(find(app.diagram, id))
   const pos = $derived.by(() => {
-    const e = find(app.diagram, id)
-    if (!e) return { x: 0, y: 0 }
-    const c = e.type === 'shape' ? center(e) : lineMid(app.diagram, e)
+    if (!el) return { x: 0, y: 0 }
+    const c = el.type === 'shape' ? center(el) : lineMid(app.diagram, el)
     return { x: app.view.x + c.x * scale, y: app.view.y + c.y * scale }
   })
+  const fontPx = $derived(((el?.style.size ?? 11) / PT_PER_CM) * scale)
 
   $effect(() => {
     area.focus()
@@ -37,7 +38,7 @@
     checkpoint()
     e.label = label
     if (e.type === 'shape' && e.shape === 'text') {
-      const r = await renderLabel(label)
+      const r = await renderLabel(label, e.style)
       if ('svg' in r) {
         const c = center(e)
         e.w = Math.max(r.w / PT_PER_CM + 0.3, 0.5)
@@ -60,54 +61,42 @@
   }
 </script>
 
-<div class="editor" style:left="{pos.x}px" style:top="{pos.y}px">
-  <textarea
-    bind:this={area}
-    bind:value
-    onkeydown={keydown}
-    onblur={commit}
-    rows={Math.max(1, value.split('\n').length)}
-    spellcheck="false"
-    placeholder="Typst, e.g. $x^2$"
-  ></textarea>
-  <div class="hint">Typst markup · <kbd>$…$</kbd> math · <kbd>↵</kbd> done</div>
-</div>
+<textarea
+  bind:this={area}
+  bind:value
+  onkeydown={keydown}
+  onblur={commit}
+  rows="1"
+  spellcheck="false"
+  placeholder="Typst…"
+  style:left="{pos.x}px"
+  style:top="{pos.y}px"
+  style:font-size="{fontPx}px"
+  style:color={el?.style.color}
+  style:font-weight={el?.style.bold ? 700 : 400}
+  style:font-style={el?.style.italic ? 'italic' : 'normal'}
+></textarea>
 
 <style>
-  .editor {
+  textarea {
     position: absolute;
     transform: translate(-50%, -50%);
     z-index: 10;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-  }
-  textarea {
-    min-width: 180px;
-    max-width: 420px;
+    min-width: 2ch;
     field-sizing: content;
     resize: none;
-    padding: 8px 12px;
+    padding: 2px 4px;
     border: none;
-    border-radius: 10px;
-    background: var(--panel);
-    box-shadow: var(--shadow), 0 0 0 2px var(--accent);
-    font: 14px/1.4 var(--mono);
-    color: var(--text);
+    border-radius: 3px;
+    background: transparent;
+    outline: 1px dashed var(--accent);
+    outline-offset: 2px;
+    font-family: 'Libertinus Serif', 'Iowan Old Style', Georgia, serif;
+    line-height: 1.25;
     text-align: center;
-    outline: none;
+    caret-color: var(--accent);
   }
-  .hint {
-    font-size: 11px;
+  textarea::placeholder {
     color: var(--muted);
-    background: var(--panel);
-    padding: 2px 8px;
-    border-radius: 6px;
-    box-shadow: var(--shadow);
-  }
-  kbd {
-    font: inherit;
-    color: var(--text);
   }
 </style>

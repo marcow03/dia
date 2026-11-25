@@ -1,23 +1,16 @@
 import { endCenter, find } from './geometry'
+import { deleteDoc, listDocs, loadDoc, saveDoc, type DocMeta } from './docs'
 import { defaultStyle, isNode, type Diagram, type Element, type Point, type ShapeKind } from './types'
 
-export type Tool = 'select' | ShapeKind | 'line'
+export type Tool = 'select' | ShapeKind | 'line' | 'arrow'
 
-const STORAGE_KEY = 'dia:document'
-
-function load(): { diagram: Diagram; name: string } {
-  try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '')
-    if (Array.isArray(saved.diagram?.elements)) return saved
-  } catch {}
-  return { diagram: { elements: [] }, name: 'untitled' }
-}
-
-const saved = load()
+const CURRENT_KEY = 'dia:current'
 
 export const app = $state({
-  diagram: saved.diagram,
-  name: saved.name,
+  diagram: { elements: [] } as Diagram,
+  name: 'untitled',
+  docId: crypto.randomUUID() as string,
+  recents: [] as DocMeta[],
   selection: [] as string[],
   tool: 'select' as Tool,
   editing: null as string | null,
@@ -26,11 +19,52 @@ export const app = $state({
   toast: '',
 })
 
+/** Loads the last opened document from the browser. */
+export async function loadDocuments() {
+  app.recents = await listDocs()
+  const id = localStorage.getItem(CURRENT_KEY) ?? app.recents[0]?.id
+  if (id) await openDocument(id)
+}
+
+let saveTimer: ReturnType<typeof setTimeout>
 $effect.root(() => {
   $effect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ diagram: app.diagram, name: app.name }))
+    const doc = { id: app.docId, name: app.name, diagram: $state.snapshot(app.diagram) as Diagram, updated: Date.now() }
+    if (!doc.diagram.elements.length && doc.name === 'untitled') return
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(async () => {
+      await saveDoc(doc)
+      localStorage.setItem(CURRENT_KEY, doc.id)
+      app.recents = await listDocs()
+    }, 300)
   })
 })
+
+function load(doc: { id: string; name: string; diagram: Diagram }) {
+  app.docId = doc.id
+  app.name = doc.name
+  app.diagram = doc.diagram
+  app.selection = []
+  app.editing = null
+  undoStack.length = 0
+  redoStack.length = 0
+}
+
+export function newDocument(diagram: Diagram = { elements: [] }, name = 'untitled') {
+  load({ id: crypto.randomUUID(), name, diagram })
+}
+
+export async function openDocument(id: string) {
+  const doc = await loadDoc(id)
+  if (doc) load(doc)
+  localStorage.setItem(CURRENT_KEY, id)
+}
+
+export async function deleteDocument(id: string) {
+  await deleteDoc(id)
+  app.recents = await listDocs()
+  if (id === app.docId) newDocument()
+}
 
 const undoStack: string[] = []
 const redoStack: string[] = []
@@ -54,29 +88,28 @@ function restore(from: string[], to: string[]) {
 export const undo = () => restore(undoStack, redoStack)
 export const redo = () => restore(redoStack, undoStack)
 
-export function setDiagram(d: Diagram, name?: string) {
+export function setDiagram(d: Diagram) {
   checkpoint()
   app.diagram = d
   app.selection = []
   app.editing = null
-  if (name) app.name = name
 }
 
 export function newId(prefix: string) {
   for (let i = 1; ; i++) if (!find(app.diagram, prefix + i)) return prefix + i
 }
 
-export function addShape(shape: ShapeKind, x: number, y: number, w: number, h: number) {
-  const id = newId(shape === 'text' ? 't' : 'n')
+export function addShape(shape: ShapeKind, x: number, y: number, w: number, h: number, src?: string) {
+  const id = newId(shape === 'text' ? 't' : shape === 'image' ? 'i' : 'n')
   const style = defaultStyle()
-  if (shape === 'text') style.stroke = null
-  app.diagram.elements.push({ id, type: 'shape', shape, x, y, w, h, style, label: '' })
+  if (shape === 'text' || shape === 'image') style.stroke = null
+  app.diagram.elements.push({ id, type: 'shape', shape, x, y, w, h, style, label: '', ...(src && { src }) })
   return id
 }
 
-export function addLine(from: Element['id'] | Point, to: Point) {
+export function addLine(from: Element['id'] | Point, to: Point, arrow: boolean) {
   const id = newId('e')
-  const style = { ...defaultStyle(), end_arrow: true }
+  const style = { ...defaultStyle(), end: arrow ? ('stealth' as const) : ('none' as const) }
   const fromEnd = typeof from === 'string' ? { node: from } : from
   app.diagram.elements.push({ id, type: 'line', from: fromEnd, to, via: [], curved: false, style, label: '' })
   return id

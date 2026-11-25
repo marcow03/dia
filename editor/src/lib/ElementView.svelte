@@ -11,17 +11,19 @@
   const dash = $derived(
     el.style.dash === 'dashed' ? `${sw * 4} ${sw * 3}` : el.style.dash === 'dotted' ? `0 ${sw * 2.5}` : undefined,
   )
+  const cap = $derived(el.style.dash === 'dotted' ? 'round' : 'butt')
   const stroke = $derived(el.style.stroke ?? 'none')
   const fill = $derived(el.style.fill ?? 'none')
+  const editing = $derived(app.editing === el.id)
 </script>
 
 <g data-id={el.id}>
   {#if el.type === 'shape'}
     {@const c = center(el)}
     {#if el.shape === 'rect'}
-      <rect x={el.x} y={el.y} width={el.w} height={el.h} rx={el.style.radius} {fill} {stroke} stroke-width={sw} stroke-dasharray={dash} />
+      <rect x={el.x} y={el.y} width={el.w} height={el.h} rx={el.style.radius} {fill} {stroke} stroke-width={sw} stroke-dasharray={dash} stroke-linecap={cap} />
     {:else if el.shape === 'ellipse'}
-      <ellipse cx={c.x} cy={c.y} rx={el.w / 2} ry={el.h / 2} {fill} {stroke} stroke-width={sw} stroke-dasharray={dash} />
+      <ellipse cx={c.x} cy={c.y} rx={el.w / 2} ry={el.h / 2} {fill} {stroke} stroke-width={sw} stroke-dasharray={dash} stroke-linecap={cap} />
     {:else if el.shape === 'diamond'}
       <polygon
         points="{c.x},{el.y} {el.x + el.w},{c.y} {c.x},{el.y + el.h} {el.x},{c.y}"
@@ -29,25 +31,35 @@
         {stroke}
         stroke-width={sw}
         stroke-dasharray={dash}
+        stroke-linecap={cap}
       />
+    {:else if el.shape === 'image'}
+      {#if el.src?.startsWith('data:')}
+        <image href={el.src} x={el.x} y={el.y} width={el.w} height={el.h} preserveAspectRatio="none" />
+      {:else}
+        <rect class="missing" x={el.x} y={el.y} width={el.w} height={el.h} stroke-width={1 / scale} />
+        <text class="missing-label" x={c.x} y={c.y} font-size={12 / scale} text-anchor="middle" dominant-baseline="middle">{el.src}</text>
+      {/if}
+      <rect x={el.x} y={el.y} width={el.w} height={el.h} fill="transparent" />
     {:else}
       <rect x={el.x} y={el.y} width={el.w} height={el.h} fill="transparent" />
     {/if}
-    {#if el.label && app.editing !== el.id}
-      <Label source={el.label} cx={c.x} cy={c.y} />
+    {#if el.label && !editing}
+      <Label source={el.label} style={el.style} cx={c.x} cy={c.y} />
     {/if}
   {:else}
     {@const path = linePath(d, el)}
     <path d={path} fill="none" stroke="transparent" stroke-width={12 / scale} class="hit" />
     <path d={path} fill="none" {stroke} stroke-width={sw} stroke-dasharray={dash} stroke-linecap="round" stroke-linejoin="round" />
-    {#each [el.style.start_arrow && arrowAt(d, el, false), el.style.end_arrow && arrowAt(d, el, true)] as a}
-      {#if a}
-        <path d={arrowHead(a.tip, a.from, 0.22 + sw * 3)} fill={stroke} />
+    {#each [arrowAt(d, el, false), arrowAt(d, el, true)] as a, i}
+      {@const head = arrowHead(i ? el.style.end : el.style.start, a.tip, a.from, 0.22 + sw * 3)}
+      {#if head.d}
+        <path d={head.d} fill={head.filled ? stroke : 'none'} {stroke} stroke-width={sw} stroke-linejoin="round" stroke-linecap="round" />
       {/if}
     {/each}
-    {#if el.label && app.editing !== el.id}
+    {#if el.label && !editing}
       {@const m = lineMid(d, el)}
-      <Label source={el.label} cx={m.x} cy={m.y} background />
+      <Label source={el.label} style={el.style} cx={m.x} cy={m.y} background />
     {/if}
   {/if}
 </g>
@@ -60,5 +72,18 @@
   ellipse,
   polygon {
     pointer-events: all;
+  }
+  image,
+  text {
+    pointer-events: none;
+  }
+  .missing {
+    fill: var(--subtle);
+    stroke: var(--muted);
+    stroke-dasharray: 4 4;
+  }
+  .missing-label {
+    fill: var(--muted);
+    font-family: var(--mono);
   }
 </style>

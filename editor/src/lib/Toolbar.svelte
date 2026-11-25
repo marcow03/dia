@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { pickImage } from './files'
   import Icon from './Icon.svelte'
   import { app, redo, undo, type Tool } from './state.svelte'
 
@@ -7,7 +8,8 @@
     ['rect', 'Rectangle', 'R'],
     ['ellipse', 'Ellipse', 'O'],
     ['diamond', 'Diamond', 'D'],
-    ['line', 'Arrow', 'A'],
+    ['line', 'Line', 'L'],
+    ['arrow', 'Arrow', 'A'],
     ['text', 'Text', 'T'],
   ]
 </script>
@@ -18,6 +20,7 @@
       <Icon name={tool} />
     </button>
   {/each}
+  <button title="Image (I)" onclick={pickImage}><Icon name="image" /></button>
   <span class="sep"></span>
   <button title="Undo (⌘Z)" onclick={undo}><Icon name="undo" /></button>
   <button title="Redo (⇧⌘Z)" onclick={redo}><Icon name="redo" /></button>
