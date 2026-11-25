@@ -1,0 +1,13 @@
+[package]
+name = "dia-wasm"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+dia-core = { path = "../dia-core" }
+wasm-bindgen = "0.2"
+serde_json = "1"

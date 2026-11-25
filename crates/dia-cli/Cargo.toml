@@ -1,0 +1,12 @@
+[package]
+name = "dia-cli"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "dia"
+path = "src/main.rs"
+
+[dependencies]
+dia-core = { path = "../dia-core" }

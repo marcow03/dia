@@ -1,0 +1,6 @@
+target/
+node_modules/
+dist/
+editor/src/lib/wasm/
+*.pdf
+tests/fixtures/*.png
