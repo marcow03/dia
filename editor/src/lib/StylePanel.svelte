@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { align, distribute, matchSize, type Align } from './arrange'
+  import { align, distribute, matchSize, reorder, type Align, type Order } from './arrange'
   import ColorPicker from './ColorPicker.svelte'
   import Icon from './Icon.svelte'
   import { arrowHead, find, PT_PER_CM } from './geometry'
@@ -81,6 +81,13 @@
     ['bottom', 'alignBottom', 'Align bottom'],
   ]
 
+  const orders: [Order, string, string][] = [
+    ['back', 'toBack', 'Send to back (⇧⌘[)'],
+    ['backward', 'backward', 'Send backward (⌘[)'],
+    ['forward', 'forward', 'Bring forward (⌘])'],
+    ['front', 'toFront', 'Bring to front (⇧⌘])'],
+  ]
+
   const headOptions = (none: string) => arrows.map((a) => ({ value: a, label: a === 'none' ? none : a }))
   const fontOptions = [{ value: '', label: 'Default font' }, ...fonts.map((f) => ({ value: f, label: f }))]
 </script>
@@ -94,9 +101,22 @@
   <span>{name}</span>
 {/snippet}
 
-{#if s && (targets.some((t) => t.kind !== 'image') || shapeCount >= 2)}
+{#if s}
   <div class="panel">
     {#if editingDefaults}<div class="hint">New {app.tool}</div>{/if}
+
+    {#if !editingDefaults}
+      <section>
+        <div class="row">
+          <span class="label">Layer</span>
+          <div class="icons grow layer">
+            {#each orders as [how, icon, title]}
+              <button {title} onclick={() => reorder(how)}><Icon name={icon} /></button>
+            {/each}
+          </div>
+        </div>
+      </section>
+    {/if}
 
     {#if !editingDefaults && shapeCount >= 2}
       <section>
@@ -266,6 +286,9 @@
     width: 34px;
     height: 30px;
     color: var(--text);
+  }
+  .icons.layer {
+    grid-template-columns: repeat(4, 1fr);
   }
   .icons button:disabled {
     opacity: 0.3;

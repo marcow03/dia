@@ -55,11 +55,12 @@
   }
   button {
     min-width: 0;
-    width: 22px;
-    height: 28px;
-    border-radius: 7px;
+    width: 18px;
+    height: 18px;
+    margin: 0 3px;
+    border-radius: 5px;
     color: var(--muted);
-    font-size: 14px;
+    font-size: 13px;
   }
   button:hover {
     background: var(--line);

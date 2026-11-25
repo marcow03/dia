@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { reorder } from './lib/arrange'
   import Canvas from './lib/Canvas.svelte'
   import CodePanel from './lib/CodePanel.svelte'
   import { ready } from './lib/core'
@@ -58,7 +59,8 @@
     else if (mod && k === 's') download('cetz', 'typ')
     else if (mod && k === 'o') pickFile()
     else if (mod && k === 'n') newDocument()
-    else if (mod && k === '/') app.showCode = !app.showCode
+    else if (mod && e.code === 'BracketRight') reorder(e.shiftKey ? 'front' : 'forward')
+    else if (mod && e.code === 'BracketLeft') reorder(e.shiftKey ? 'back' : 'backward')
     else if (mod && (k === '=' || k === '+')) zoomBy(1.25)
     else if (mod && k === '-') zoomBy(1 / 1.25)
     else if (mod && k === '0') zoomTo(1)
@@ -74,6 +76,7 @@
     else if (k.startsWith('arrow') && app.selection.length) nudge(k, e.shiftKey ? 1 : 0.25)
     else if (k === 'i') pickImage()
     else if (e.shiftKey && e.code === 'Digit1') zoomToFit()
+    else if (e.shiftKey && e.code === 'KeyC') app.showCode = !app.showCode
     else if (toolKeys[k]) app.tool = toolKeys[k]
     else return
     e.preventDefault()

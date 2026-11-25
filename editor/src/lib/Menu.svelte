@@ -30,13 +30,13 @@
     <div class="sub">
       {#each exports as x}
         <button onclick={run(() => download(x.format, x.ext))}>
-          {x.label}<span>{x.format === 'cetz' ? '⌘S' : `.${x.ext}`}</span>
+          {x.label}<span>.{x.ext}{#if x.format === 'cetz'}<kbd>⌘S</kbd>{/if}</span>
         </button>
       {/each}
     </div>
   {/if}
   <button onclick={run(() => (app.showCode = !app.showCode))}>
-    {app.showCode ? 'Hide' : 'Show'} CeTZ code<kbd>⌘/</kbd>
+    {app.showCode ? 'Hide' : 'Show'} CeTZ code<kbd>⇧C</kbd>
   </button>
   {#if app.recents.length}
     <div class="heading">Recent</div>
@@ -90,6 +90,9 @@
   }
   .sub {
     padding-left: 10px;
+  }
+  .sub kbd {
+    margin-left: 8px;
   }
   .heading {
     margin: 8px 10px 4px;

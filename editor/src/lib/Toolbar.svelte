@@ -40,7 +40,7 @@
     display: flex;
     align-items: flex-start;
     gap: 2px;
-    padding: 6px 6px 5px;
+    padding: 6px 6px 9px;
     background: var(--panel);
     border-radius: 14px;
     box-shadow: var(--shadow);

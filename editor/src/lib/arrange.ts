@@ -54,3 +54,26 @@ export function matchSize(dim: 'w' | 'h') {
     s[dim] = target
   }
 }
+
+export type Order = 'front' | 'forward' | 'backward' | 'back'
+
+/** Moves the selected elements in the stacking order (later elements are drawn on top). */
+export function reorder(how: Order) {
+  const els = app.diagram.elements
+  const sel = new Set(app.selection)
+  if (!sel.size) return
+  checkpoint()
+  const picked = els.filter((e) => sel.has(e.id))
+  const rest = els.filter((e) => !sel.has(e.id))
+  if (how === 'front') return void (app.diagram.elements = [...rest, ...picked])
+  if (how === 'back') return void (app.diagram.elements = [...picked, ...rest])
+  const order = [...els]
+  const step = how === 'forward' ? 1 : -1
+  const idx = order.map((e, i) => (sel.has(e.id) ? i : -1)).filter((i) => i >= 0)
+  for (const i of step > 0 ? idx.reverse() : idx) {
+    const j = i + step
+    if (j < 0 || j >= order.length || sel.has(order[j].id)) continue
+    ;[order[i], order[j]] = [order[j], order[i]]
+  }
+  app.diagram.elements = order
+}

@@ -19,6 +19,7 @@
   let drag = $state<Drag | null>(null)
   let hover = $state<string | null>(null)
   let guides = $state<{ x1: number; y1: number; x2: number; y2: number }[]>([])
+  let sizeMarks = $state<{ x: number; y: number; w: number; h: number; dim: 'w' | 'h' }[]>([])
   let spaceDown = $state(false)
   // Pointer capture retargets dblclick to the svg, so remember what the press hit.
   let pressedId: string | undefined
@@ -141,23 +142,18 @@
         const q = snapP(p)
         const fx = drag.corner.includes('w') ? o.x + o.w : o.x
         const fy = drag.corner.includes('n') ? o.y + o.h : o.y
-        el.x = Math.min(fx, q.x)
-        el.y = Math.min(fy, q.y)
-        el.w = Math.max(Math.abs(q.x - fx), 0.25)
-        el.h = Math.max(Math.abs(q.y - fy), 0.25)
-        if (el.shape === 'image') {
-          el.h = (el.w * o.h) / o.w
-          if (drag.corner.includes('n')) el.y = fy - el.h
+        if (el.shape !== 'image') {
+          sizeTo(el, fx, fy, p)
+          break
         }
+        el.x = Math.min(fx, q.x)
+        el.w = Math.max(Math.abs(q.x - fx), 0.25)
+        el.h = (el.w * o.h) / o.w
+        el.y = drag.corner.includes('n') ? fy - el.h : fy
         break
       }
       case 'create': {
-        const el = find(d, drag.id) as Shape
-        const q = snapP(p)
-        el.x = Math.min(drag.start.x, q.x)
-        el.y = Math.min(drag.start.y, q.y)
-        el.w = Math.abs(q.x - drag.start.x)
-        el.h = Math.abs(q.y - drag.start.y)
+        sizeTo(find(d, drag.id) as Shape, drag.start.x, drag.start.y, p)
         break
       }
       case 'end': {
@@ -210,6 +206,7 @@
     drag = null
     hover = null
     guides = []
+    sizeMarks = []
   }
 
   function dblclick(ev: MouseEvent) {
@@ -224,6 +221,27 @@
     const nid = addShape('text', p.x - 1, p.y - 0.4, 2, 0.8)
     app.selection = [nid]
     app.editing = nid
+  }
+
+  /**
+   * Sizes a shape from the fixed corner (fx, fy) towards `p`, snapping width and height
+   * to those of other shapes (marking all matches) or to the grid.
+   */
+  function sizeTo(el: Shape, fx: number, fy: number, p: Point) {
+    const others = d.elements.filter((e): e is Shape => e.type === 'shape' && e.id !== el.id)
+    const fit = (raw: number, dim: 'w' | 'h') => {
+      const m = others.find((o) => Math.abs(o[dim] - raw) < 6 / scale)
+      return m ? m[dim] : Math.max(snap(raw), 0.25)
+    }
+    el.w = fit(Math.abs(p.x - fx), 'w')
+    el.h = fit(Math.abs(p.y - fy), 'h')
+    el.x = p.x < fx ? fx - el.w : fx
+    el.y = p.y < fy ? fy - el.h : fy
+    const marks = (dim: 'w' | 'h') => {
+      const same = others.filter((o) => Math.abs(o[dim] - el[dim]) < 1e-9)
+      return same.length ? [el, ...same].map(({ x, y, w, h }) => ({ x, y, w, h, dim })) : []
+    }
+    sizeMarks = [...marks('w'), ...marks('h')]
   }
 
   /**
@@ -399,6 +417,17 @@
       {/if}
     {/each}
 
+    {#each sizeMarks as m}
+      {@const t = 6 / scale}
+      {#if m.dim === 'w'}
+        {@const y = m.y - 12 / scale}
+        <path class="guide" d="M{m.x} {y}H{m.x + m.w}M{m.x} {y - t / 2}v{t}M{m.x + m.w} {y - t / 2}v{t}" stroke-width={1 / scale} />
+      {:else}
+        {@const x = m.x - 12 / scale}
+        <path class="guide" d="M{x} {m.y}V{m.y + m.h}M{x - t / 2} {m.y}h{t}M{x - t / 2} {m.y + m.h}h{t}" stroke-width={1 / scale} />
+      {/if}
+    {/each}
+
     {#each guides as g}
       <line class="guide" x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke-width={1 / scale} />
     {/each}
@@ -452,6 +481,7 @@
     pointer-events: none;
   }
   .guide {
+    fill: none;
     stroke: #ff2d55;
     pointer-events: none;
   }
