@@ -152,7 +152,8 @@ fn text_opts(s: &Style, opts: &mut Vec<String>) {
     if s.italic {
         font.push_str("\\itshape");
     }
-    if s.size != Style::default().size {
+    // A node's `font` replaces the picture-wide one, so the size must be repeated.
+    if s.size != Style::default().size || !font.is_empty() {
         write!(
             font,
             "\\fontsize{{{}}}{{{}}}\\selectfont",
