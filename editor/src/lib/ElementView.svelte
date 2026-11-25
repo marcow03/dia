@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { arrowAt, arrowHead, center, lineMid, linePath, PT_PER_CM } from './geometry'
+  import { arrowAt, arrowHead, center, labelPoint, linePath, PT_PER_CM } from './geometry'
   import Label from './Label.svelte'
   import { app } from './state.svelte'
   import type { Element } from './types'
@@ -15,6 +15,8 @@
   const stroke = $derived(el.style.stroke ?? 'none')
   const fill = $derived(el.style.fill ?? 'none')
   const editing = $derived(app.editing === el.id)
+  const handle = $derived(app.selection.length === 1 && app.selection[0] === el.id ? el.id : undefined)
+  const lp = $derived(labelPoint(d, el))
 </script>
 
 <g data-id={el.id}>
@@ -45,7 +47,7 @@
       <rect x={el.x} y={el.y} width={el.w} height={el.h} fill="transparent" />
     {/if}
     {#if el.label && !editing}
-      <Label source={el.label} style={el.style} cx={c.x} cy={c.y} />
+      <Label source={el.label} style={el.style} cx={lp.x} cy={lp.y} handle={el.shape === 'text' ? undefined : handle} />
     {/if}
   {:else}
     {@const path = linePath(d, el)}
@@ -58,8 +60,7 @@
       {/if}
     {/each}
     {#if el.label && !editing}
-      {@const m = lineMid(d, el)}
-      <Label source={el.label} style={el.style} cx={m.x} cy={m.y} background />
+      <Label source={el.label} style={el.style} cx={lp.x} cy={lp.y} background {handle} />
     {/if}
   {/if}
 </g>

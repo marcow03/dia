@@ -6,7 +6,7 @@ The IR (`ir.rs`) is small and semantic. It describes shapes and connections, not
 - `Shape { shape: rect | ellipse | diamond | text, x, y, w, h }`
 - `Line { from, to, via, curved }`. An `End` is either a point or `{ node: id }`, a binding to a shape. With `curved` and 1–2 `via` points, the via points are bezier control points. Otherwise they are polyline waypoints.
 - `Style { stroke, fill, width (pt), dash, radius (cm), start_arrow, end_arrow }`. Colours are hex strings, and `None` means no stroke or no fill.
-- `label`: Typst markup (see 003).
+- `label`: Typst markup (see 003). `label_at` is either an offset from the shape centre or a position `t` along a line. CeTZ writes it as `(rel:, to:)` or `(name:, anchor: t%)`, TikZ as `label={[shift=…]center:…}` or `node[pos=t]`, drawio as asymmetric spacing or the edge geometry's `x`.
 
 Canonical units are **centimetres, y pointing down**, matching screen coordinates. Readers and writers convert at the boundary:
 - CeTZ and TikZ: cm, y up, so y is negated.

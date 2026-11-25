@@ -22,7 +22,9 @@ export type Style = {
   color: string
 }
 
-type Base = { id: string; style: Style; label: string }
+/** Label placement: offset from a shape's center (cm), or position along a line (0..1). */
+export type LabelAt = { dx: number; dy: number } | { t: number }
+type Base = { id: string; style: Style; label: string; label_at?: LabelAt }
 export type Shape = Base & { type: 'shape'; shape: ShapeKind; x: number; y: number; w: number; h: number; src?: string }
 export type Line = Base & { type: 'line'; from: End; to: End; via: Point[]; curved: boolean }
 export type Element = Shape | Line

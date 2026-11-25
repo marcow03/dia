@@ -96,26 +96,59 @@ export function arrowHead(kind: Arrow, tip: Point, from: Point, size: number): {
   }
 }
 
-export function lineMid(d: Diagram, l: Line): Point {
+/** Dense polyline approximation of a line, for measuring and hit testing. */
+function sampleLine(d: Diagram, l: Line): Point[] {
   const p = linePoints(d, l)
-  if (isBezier(l)) {
-    const c = [p[0], ...l.via, p[p.length - 1]]
-    const t = 0.5
-    if (c.length === 3)
-      return { x: 0.25 * c[0].x + 0.5 * c[1].x + 0.25 * c[2].x, y: 0.25 * c[0].y + 0.5 * c[1].y + 0.25 * c[2].y }
-    const k = [(1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t ** 2, t ** 3]
+  if (!isBezier(l)) return p
+  const c = [p[0], ...l.via, p[p.length - 1]]
+  const at = (t: number) => {
+    const k = c.length === 3 ? [(1 - t) ** 2, 2 * (1 - t) * t, t ** 2] : [(1 - t) ** 3, 3 * (1 - t) ** 2 * t, 3 * (1 - t) * t ** 2, t ** 3]
     return { x: k.reduce((s, v, i) => s + v * c[i].x, 0), y: k.reduce((s, v, i) => s + v * c[i].y, 0) }
   }
-  const lens = p.slice(1).map((q, i) => Math.hypot(q.x - p[i].x, q.y - p[i].y))
-  let rest = lens.reduce((a, b) => a + b, 0) / 2
+  return Array.from({ length: 65 }, (_, i) => at(i / 64))
+}
+
+const segLengths = (p: Point[]) => p.slice(1).map((q, i) => Math.hypot(q.x - p[i].x, q.y - p[i].y))
+
+/** Point at fraction `t` of the line's length. */
+export function linePointAt(d: Diagram, l: Line, t: number): Point {
+  const p = sampleLine(d, l)
+  const lens = segLengths(p)
+  let rest = lens.reduce((a, b) => a + b, 0) * t
   for (let i = 0; i < lens.length; i++) {
     if (rest <= lens[i] || i === lens.length - 1) {
-      const t = lens[i] ? rest / lens[i] : 0
-      return { x: p[i].x + (p[i + 1].x - p[i].x) * t, y: p[i].y + (p[i + 1].y - p[i].y) * t }
+      const f = lens[i] ? Math.min(rest / lens[i], 1) : 0
+      return { x: p[i].x + (p[i + 1].x - p[i].x) * f, y: p[i].y + (p[i + 1].y - p[i].y) * f }
     }
     rest -= lens[i]
   }
   return p[0]
+}
+
+/** Fraction of the line's length closest to `q`. */
+export function lineProject(d: Diagram, l: Line, q: Point): number {
+  const p = sampleLine(d, l)
+  const lens = segLengths(p)
+  const total = lens.reduce((a, b) => a + b, 0) || 1
+  let best = { dist: Infinity, t: 0.5 }
+  let acc = 0
+  for (let i = 0; i < lens.length; i++) {
+    const [a, b] = [p[i], p[i + 1]]
+    const len2 = lens[i] ** 2 || 1
+    const f = Math.max(0, Math.min(1, ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y)) / len2))
+    const dist = Math.hypot(a.x + (b.x - a.x) * f - q.x, a.y + (b.y - a.y) * f - q.y)
+    if (dist < best.dist) best = { dist, t: (acc + lens[i] * f) / total }
+    acc += lens[i]
+  }
+  return best.t
+}
+
+/** Where an element's label is drawn. */
+export function labelPoint(d: Diagram, e: Element): Point {
+  const at = e.label_at
+  if (e.type === 'line') return linePointAt(d, e, at && 't' in at ? at.t : 0.5)
+  const c = center(e)
+  return at && 'dx' in at ? { x: c.x + at.dx, y: c.y + at.dy } : c
 }
 
 export function bounds(d: Diagram, e: Element) {

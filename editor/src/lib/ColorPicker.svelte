@@ -79,7 +79,7 @@
   .pop {
     position: absolute;
     top: calc(100% + 6px);
-    right: 0;
+    left: 0;
     z-index: 20;
     width: 220px;
     padding: 10px;

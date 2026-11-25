@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { center, find, lineMid, PT_PER_CM } from './geometry'
+  import { center, find, labelPoint, PT_PER_CM } from './geometry'
   import { app, checkpoint, remove } from './state.svelte'
   import { renderLabel } from './typst'
 
@@ -13,7 +13,7 @@
   const el = $derived(find(app.diagram, id))
   const pos = $derived.by(() => {
     if (!el) return { x: 0, y: 0 }
-    const c = el.type === 'shape' ? center(el) : lineMid(app.diagram, el)
+    const c = labelPoint(app.diagram, el)
     return { x: app.view.x + c.x * scale, y: app.view.y + c.y * scale }
   })
   const fontPx = $derived(((el?.style.size ?? 11) / PT_PER_CM) * scale)

@@ -5,7 +5,6 @@
     step = 1,
     min = 0,
     unit = 'pt',
-    prefix,
     label,
   }: {
     value: number
@@ -13,7 +12,6 @@
     step?: number
     min?: number
     unit?: string
-    prefix?: string
     label: string
   } = $props()
 
@@ -22,7 +20,6 @@
 </script>
 
 <div class="number" title={label}>
-  {#if prefix}<span class="prefix">{prefix}</span>{/if}
   <button aria-label="Decrease {label}" onclick={() => commit(value - step)}>−</button>
   <input
     aria-label={label}
@@ -65,10 +62,6 @@
   button:hover {
     background: var(--line);
     color: var(--text);
-  }
-  .prefix {
-    padding-left: 8px;
-    font-weight: 600;
   }
   input {
     width: 30px;

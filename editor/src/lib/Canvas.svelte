@@ -1,6 +1,6 @@
 <script lang="ts">
   import ElementView from './ElementView.svelte'
-  import { bounds, find, linePoints, PX_PER_CM, shapeAt, snap } from './geometry'
+  import { bounds, center, find, labelPoint, lineProject, linePoints, PX_PER_CM, shapeAt, snap } from './geometry'
   import { openFiles, readImage } from './files'
   import LabelEditor from './LabelEditor.svelte'
   import { addLine, addShape, app, checkpoint, remove, zoomBy } from './state.svelte'
@@ -13,6 +13,8 @@
     | { kind: 'create'; id: string; start: Point }
     | { kind: 'end'; id: string; which: 'from' | 'to' }
     | { kind: 'via'; id: string; index: number }
+    | { kind: 'label'; id: string }
+    | { kind: 'add'; id: string; index: number; start: Point }
     | { kind: 'marquee'; start: Point; now: Point; additive: string[] }
 
   let svg: SVGSVGElement
@@ -53,7 +55,7 @@
     const target = ev.target as globalThis.Element
     const handleEl = target.closest?.('[data-handle]') as HTMLElement | null
     const id = (target.closest?.('[data-id]') as HTMLElement | null)?.dataset.id
-    pressedId = id
+    pressedId = id ?? handleEl?.dataset.handle?.split(':')[1]
 
     if (app.tool === 'rect' || app.tool === 'ellipse' || app.tool === 'diamond') {
       checkpoint()
@@ -88,10 +90,8 @@
       if (kind === 'resize' && el.type === 'shape') drag = { kind: 'resize', id: hid, corner: arg, orig: { ...el } }
       else if (kind === 'end') drag = { kind: 'end', id: hid, which: arg as 'from' | 'to' }
       else if (kind === 'via') drag = { kind: 'via', id: hid, index: +arg }
-      else if (kind === 'add' && el.type === 'line') {
-        el.via.splice(+arg, 0, snapP(p))
-        drag = { kind: 'via', id: hid, index: +arg }
-      }
+      else if (kind === 'label') drag = { kind: 'label', id: hid }
+      else if (kind === 'add') drag = { kind: 'add', id: hid, index: +arg, start: p }
       return
     }
     if (id) {
@@ -163,6 +163,39 @@
         const end = endAt(p, isNode(other) ? other.node : undefined)
         el[drag.which] = end
         hover = isNode(end) ? end.node : null
+        break
+      }
+      case 'add': {
+        // Only a real drag inserts a waypoint, so clicks (and double-clicks) on the dot do not.
+        const el = find(d, drag.id)
+        if (el?.type !== 'line' || Math.hypot(p.x - drag.start.x, p.y - drag.start.y) < 4 / scale) break
+        el.via.splice(drag.index, 0, snapP(p))
+        drag = { kind: 'via', id: drag.id, index: drag.index }
+        break
+      }
+      case 'label': {
+        const el = find(d, drag.id)
+        if (!el) break
+        guides = []
+        if (el.type === 'line') {
+          const t = lineProject(d, el, p)
+          el.label_at = Math.abs(t - 0.5) < 0.03 ? undefined : { t: Math.round(t * 1000) / 1000 }
+          break
+        }
+        const c = center(el)
+        const tol = 6 / scale
+        let dx = Math.max(-el.w / 2, Math.min(el.w / 2, p.x - c.x))
+        let dy = Math.max(-el.h / 2, Math.min(el.h / 2, p.y - c.y))
+        if (Math.abs(dx) < tol) {
+          dx = 0
+          guides.push({ x1: c.x, y1: el.y, x2: c.x, y2: el.y + el.h })
+        }
+        if (Math.abs(dy) < tol) {
+          dy = 0
+          guides.push({ x1: el.x, y1: c.y, x2: el.x + el.w, y2: c.y })
+        }
+        const r = (v: number) => Math.round(v * 1000) / 1000
+        el.label_at = dx || dy ? { dx: r(dx), dy: r(dy) } : undefined
         break
       }
       case 'via': {
@@ -392,12 +425,15 @@
         {@const pts = linePoints(d, el)}
         {#if selected.length === 1 && !app.editing}
           {#if !el.curved || el.via.length === 0}
+            {@const lp = el.label ? labelPoint(d, el) : null}
             {#each pts.slice(1) as q, i}
+              {@const mid = { x: (q.x + pts[i].x) / 2, y: (q.y + pts[i].y) / 2 }}
+              {@const f = lp && Math.hypot(mid.x - lp.x, mid.y - lp.y) < 0.6 ? 0.2 : 0.5}
               <circle
                 class="add"
                 data-handle="add:{el.id}:{i}"
-                cx={(q.x + pts[i].x) / 2}
-                cy={(q.y + pts[i].y) / 2}
+                cx={pts[i].x + (q.x - pts[i].x) * f}
+                cy={pts[i].y + (q.y - pts[i].y) * f}
                 r={handle / 2.5}
                 stroke-width={1.5 / scale}
               />

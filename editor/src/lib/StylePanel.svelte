@@ -1,17 +1,17 @@
 <script lang="ts">
   import { align, distribute, matchSize, reorder, type Align, type Order } from './arrange'
   import ColorPicker from './ColorPicker.svelte'
-  import Icon from './Icon.svelte'
   import { arrowHead, find, PT_PER_CM } from './geometry'
+  import Icon from './Icon.svelte'
   import NumberInput from './NumberInput.svelte'
   import Select from './Select.svelte'
   import { app, checkpoint, type DrawTool } from './state.svelte'
-  import { arrows, fonts, type Arrow, type Line, type Style } from './types'
+  import { arrows, fonts, type Arrow, type Element, type Style } from './types'
 
   type Kind = 'rect' | 'shape' | 'text' | 'image' | 'line'
-  type Target = { style: Style; kind: Kind; line?: Line }
+  type Target = { style: Style; kind: Kind; el?: Element }
 
-  const kindOf: Record<DrawTool, Kind> = {
+  const toolKind: Record<DrawTool, Kind> = {
     rect: 'rect',
     ellipse: 'shape',
     diamond: 'shape',
@@ -20,40 +20,47 @@
     arrow: 'line',
   }
 
+  const kindOf = (e: Element): Kind =>
+    e.type === 'line' ? 'line' : e.shape === 'ellipse' || e.shape === 'diamond' ? 'shape' : e.shape
+
   /** The selection, or the active tool's defaults when nothing is selected. */
   const targets = $derived.by((): Target[] => {
     if (app.selection.length) {
       return app.selection
         .map((id) => find(app.diagram, id))
         .filter((e) => e !== undefined)
-        .map((e) =>
-          e.type === 'line'
-            ? { style: e.style, kind: 'line', line: e }
-            : { style: e.style, kind: e.shape === 'rect' ? 'rect' : e.shape === 'ellipse' || e.shape === 'diamond' ? 'shape' : e.shape },
-        )
+        .map((e) => ({ style: e.style, kind: kindOf(e), el: e }))
     }
     if (app.tool === 'select' || app.tool === 'hand' || app.tool === 'image') return []
-    return [{ style: app.defaults[app.tool], kind: kindOf[app.tool] }]
+    return [{ style: app.defaults[app.tool], kind: toolKind[app.tool] }]
   })
   const editingDefaults = $derived(!app.selection.length)
   const s = $derived(targets[0]?.style)
   const has = (...kinds: Kind[]) => targets.some((t) => kinds.includes(t.kind))
-  const lines = $derived(targets.flatMap((t) => (t.line ? [t.line] : [])))
+  const lines = $derived(targets.flatMap((t) => (t.el?.type === 'line' ? [t.el] : [])))
+  const shapeCount = $derived(targets.filter((t) => t.kind !== 'line').length)
+  const moved = $derived(targets.some((t) => t.el?.label_at))
+
+  const strokeKeys: (keyof Style)[] = ['stroke', 'fill', 'width', 'dash']
+  const textKeys: (keyof Style)[] = ['font', 'size', 'bold', 'italic', 'color']
 
   function change(f: () => void) {
     if (!editingDefaults) checkpoint()
     f()
   }
 
-  /** Keys shared by all tools: setting them once updates every tool's defaults. */
-  const shared: (keyof Style)[] = ['stroke', 'fill', 'width', 'dash', 'font', 'size', 'bold', 'italic', 'color']
-  const textOnly: (keyof Style)[] = ['font', 'size', 'bold', 'italic', 'color']
-
+  /**
+   * Sets a style key on all targets. Stroke settings become the default for every shape tool;
+   * text settings become the default either for labels or for the text tool, matching the targets.
+   */
   function set<K extends keyof Style>(key: K, value: Style[K]) {
     change(() => targets.forEach((t) => (t.style[key] = value)))
-    if (!shared.includes(key)) return
+    const labels = has('rect', 'shape', 'line')
+    const texts = has('text')
     for (const [tool, style] of Object.entries(app.defaults)) {
-      if (tool !== 'text' || textOnly.includes(key)) style[key] = value
+      const isText = tool === 'text'
+      if (strokeKeys.includes(key) && !isText) style[key] = value
+      if (textKeys.includes(key) && (isText ? texts : labels)) style[key] = value
     }
   }
 
@@ -61,17 +68,16 @@
     change(() => {
       for (const t of targets) {
         if (t.kind !== 'line') continue
-        const st = t.style
-        const head = st.end !== 'none' ? st.end : st.start !== 'none' ? st.start : 'stealth'
-        st.start = start ? head : 'none'
-        st.end = end ? head : 'none'
+        const head = t.style.end !== 'none' ? t.style.end : t.style.start !== 'none' ? t.style.start : 'stealth'
+        t.style.start = start ? head : 'none'
+        t.style.end = end ? head : 'none'
       }
     })
   }
 
   const setCurved = (curved: boolean) => change(() => lines.forEach((l) => (l.curved = curved)))
+  const centerLabels = () => change(() => targets.forEach((t) => t.el && (t.el.label_at = undefined)))
 
-  const shapeCount = $derived(targets.filter((t) => t.kind !== 'line').length)
   const alignments: [Align, string, string][] = [
     ['left', 'alignLeft', 'Align left'],
     ['center', 'alignCenter', 'Align centers horizontally'],
@@ -80,14 +86,12 @@
     ['middle', 'alignMiddle', 'Align centers vertically'],
     ['bottom', 'alignBottom', 'Align bottom'],
   ]
-
   const orders: [Order, string, string][] = [
     ['back', 'toBack', 'Send to back (⇧⌘[)'],
     ['backward', 'backward', 'Send backward (⌘[)'],
     ['forward', 'forward', 'Bring forward (⌘])'],
     ['front', 'toFront', 'Bring to front (⇧⌘])'],
   ]
-
   const headOptions = (none: string) => arrows.map((a) => ({ value: a, label: a === 'none' ? none : a }))
   const fontOptions = [{ value: '', label: 'Default font' }, ...fonts.map((f) => ({ value: f, label: f }))]
 </script>
@@ -103,41 +107,39 @@
 
 {#if s}
   <div class="panel">
-    {#if editingDefaults}<div class="hint">New {app.tool}</div>{/if}
-
-    {#if !editingDefaults}
+    {#if editingDefaults}
+      <header>New {app.tool}</header>
+    {:else}
       <section>
-        <div class="row">
-          <span class="label">Layer</span>
-          <div class="icons grow layer">
-            {#each orders as [how, icon, title]}
-              <button {title} onclick={() => reorder(how)}><Icon name={icon} /></button>
-            {/each}
-          </div>
-        </div>
-      </section>
-    {/if}
-
-    {#if !editingDefaults && shapeCount >= 2}
-      <section>
-        <div class="icons">
-          {#each alignments as [how, icon, title]}
-            <button {title} onclick={() => align(how)}><Icon name={icon} /></button>
+        <h3>Layer</h3>
+        <div class="icons four">
+          {#each orders as [how, icon, title]}
+            <button {title} onclick={() => reorder(how)}><Icon name={icon} /></button>
           {/each}
         </div>
-        <div class="icons">
-          <button title="Equal horizontal gaps" disabled={shapeCount < 3} onclick={() => distribute('x')}><Icon name="distributeH" /></button>
-          <button title="Equal vertical gaps" disabled={shapeCount < 3} onclick={() => distribute('y')}><Icon name="distributeV" /></button>
-          <button title="Same width" onclick={() => matchSize('w')}><Icon name="sameWidth" /></button>
-          <button title="Same height" onclick={() => matchSize('h')}><Icon name="sameHeight" /></button>
-        </div>
       </section>
+      {#if shapeCount >= 2}
+        <section>
+          <h3>Arrange</h3>
+          <div class="icons">
+            {#each alignments as [how, icon, title]}
+              <button {title} onclick={() => align(how)}><Icon name={icon} /></button>
+            {/each}
+          </div>
+          <div class="icons">
+            <button title="Equal horizontal gaps" disabled={shapeCount < 3} onclick={() => distribute('x')}><Icon name="distributeH" /></button>
+            <button title="Equal vertical gaps" disabled={shapeCount < 3} onclick={() => distribute('y')}><Icon name="distributeV" /></button>
+            <button title="Same width" onclick={() => matchSize('w')}><Icon name="sameWidth" /></button>
+            <button title="Same height" onclick={() => matchSize('h')}><Icon name="sameHeight" /></button>
+          </div>
+        </section>
+      {/if}
     {/if}
 
     {#if has('rect', 'shape', 'line')}
       <section>
+        <h3>Stroke</h3>
         <div class="row">
-          <span class="label">Stroke</span>
           <ColorPicker value={s.stroke} allowNone onchange={(v) => set('stroke', v)} />
           <NumberInput label="Stroke width" value={s.width} step={0.25} onchange={(v) => set('width', v)} />
         </div>
@@ -146,36 +148,32 @@
             <button class:on={s.dash === dash} onclick={() => set('dash', dash)}>{dash}</button>
           {/each}
         </div>
+        {#if has('rect')}
+          <div class="row">
+            <span class="label">Corner radius</span>
+            <NumberInput label="Corner radius" value={s.radius * PT_PER_CM} onchange={(v) => set('radius', v / PT_PER_CM)} />
+          </div>
+        {/if}
       </section>
     {/if}
 
     {#if has('rect', 'shape')}
       <section>
+        <h3>Fill</h3>
         <div class="row">
-          <span class="label">Fill</span>
           <ColorPicker value={s.fill} allowNone onchange={(v) => set('fill', v)} />
-          {#if has('rect')}
-            <NumberInput
-              label="Corner radius"
-              prefix="R"
-              value={s.radius * PT_PER_CM}
-              onchange={(v) => set('radius', v / PT_PER_CM)}
-            />
-          {/if}
         </div>
       </section>
     {/if}
 
     {#if has('line')}
       <section>
-        <div class="row">
-          <span class="label">Arrows</span>
-          <div class="seg grow">
-            <button title="No arrows" class:on={s.start === 'none' && s.end === 'none'} onclick={() => direction(false, false)}>—</button>
-            <button title="Forward" class:on={s.start === 'none' && s.end !== 'none'} onclick={() => direction(false, true)}>→</button>
-            <button title="Backward" class:on={s.start !== 'none' && s.end === 'none'} onclick={() => direction(true, false)}>←</button>
-            <button title="Both" class:on={s.start !== 'none' && s.end !== 'none'} onclick={() => direction(true, true)}>↔</button>
-          </div>
+        <h3>Arrows</h3>
+        <div class="seg">
+          <button title="No arrows" class:on={s.start === 'none' && s.end === 'none'} onclick={() => direction(false, false)}>—</button>
+          <button title="Forward" class:on={s.start === 'none' && s.end !== 'none'} onclick={() => direction(false, true)}>→</button>
+          <button title="Backward" class:on={s.start !== 'none' && s.end === 'none'} onclick={() => direction(true, false)}>←</button>
+          <button title="Both" class:on={s.start !== 'none' && s.end !== 'none'} onclick={() => direction(true, true)}>↔</button>
         </div>
         <div class="row">
           <Select label="Start head" value={s.start} options={headOptions('Start')} onchange={(v) => set('start', v)}>
@@ -196,8 +194,11 @@
 
     {#if has('rect', 'shape', 'text', 'line')}
       <section>
+        <h3>
+          {has('text') && !has('rect', 'shape', 'line') ? 'Text' : 'Label'}
+          {#if moved}<button class="link" onclick={centerLabels}>Center</button>{/if}
+        </h3>
         <div class="row">
-          <span class="label">Text</span>
           <ColorPicker value={s.color} onchange={(v) => set('color', v ?? '#000000')} />
           <NumberInput label="Font size" value={s.size} min={1} onchange={(v) => set('size', v)} />
         </div>
@@ -219,14 +220,16 @@
     top: 12px;
     right: 16px;
     width: 256px;
-    padding: 4px 12px;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    padding: 2px 12px;
     background: var(--panel);
     border-radius: 14px;
     box-shadow: var(--shadow);
   }
-  .hint {
-    padding: 8px 0 0;
-    font-size: 11px;
+  header {
+    padding: 10px 0 2px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--accent);
     text-transform: capitalize;
@@ -235,10 +238,26 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 10px 0;
+    padding: 10px 0 12px;
   }
   section + section {
     border-top: 1px solid var(--line);
+  }
+  h3 {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .link {
+    min-width: 0;
+    height: 18px;
+    padding: 0 6px;
+    font-size: 11px;
+    color: var(--accent);
   }
   .row {
     display: flex;
@@ -246,13 +265,8 @@
     gap: 8px;
   }
   .label {
-    width: 44px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--muted);
-  }
-  .grow {
-    flex: 1;
+    font-size: 12px;
+    color: var(--text);
   }
   .row :global(.value span) {
     text-transform: capitalize;
@@ -281,14 +295,13 @@
     grid-template-columns: repeat(6, 1fr);
     justify-items: center;
   }
+  .icons.four {
+    grid-template-columns: repeat(4, 1fr);
+  }
   .icons button {
     min-width: 0;
     width: 34px;
     height: 30px;
-    color: var(--text);
-  }
-  .icons.layer {
-    grid-template-columns: repeat(4, 1fr);
   }
   .icons button:disabled {
     opacity: 0.3;
