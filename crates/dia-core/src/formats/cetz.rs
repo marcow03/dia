@@ -15,8 +15,9 @@ pub const FORMAT: Format = Format {
 pub const CETZ_VERSION: &str = "0.5.3";
 
 pub fn write(d: &Diagram) -> String {
-    let mut out =
-        format!("#import \"@preview/cetz:{CETZ_VERSION}\"\n#set page(width: auto, height: auto, margin: 0.5cm)\n#set text(size: 14pt)\n\n");
+    let mut out = format!(
+        "#import \"@preview/cetz:{CETZ_VERSION}\"\n#set page(width: auto, height: auto, margin: 0.5cm)\n#set text(size: 14pt)\n\n"
+    );
     for e in &d.elements {
         if let Kind::Shape {
             shape: ShapeKind::Image,
@@ -109,17 +110,18 @@ pub fn write(d: &Diagram) -> String {
         }
         writeln!(out, "  {call}({})", args.join(", ")).unwrap();
         if !e.label.is_empty() && !is_text {
-            if is_line {
-                writeln!(
-                    out,
-                    "  content(\"{}.mid\", {}, frame: \"rect\", fill: white, stroke: none, padding: 0.1)",
-                    e.id,
-                    label_body(&e.label, &e.style)
-                )
+            let at = match e.label_at {
+                Some(LabelAt::Along { t }) => format!("(name: \"{}\", anchor: {}%)", e.id, num(t * 100.0)),
+                Some(LabelAt::Offset { dx, dy }) => format!("(rel: ({}, {}), to: \"{}\")", num(dx), num(-dy), e.id),
+                None if is_line => format!("\"{}.mid\"", e.id),
+                None => format!("\"{}\"", e.id),
+            };
+            let frame = if is_line {
+                ", frame: \"rect\", fill: white, stroke: none, padding: 0.1"
             } else {
-                writeln!(out, "  content(\"{}\", {})", e.id, label_body(&e.label, &e.style))
-            }
-            .unwrap();
+                ""
+            };
+            writeln!(out, "  content({at}, {}{frame})", label_body(&e.label, &e.style)).unwrap();
         }
     }
     out.push_str("})\n");
@@ -240,6 +242,7 @@ fn label_body(label: &str, s: &Style) -> String {
 enum Value {
     Num(f64),
     Angle(f64),
+    Ratio(f64),
     Str(String),
     Bool(bool),
     None,
@@ -295,11 +298,13 @@ pub fn read(src: &str, warnings: &mut Warnings) -> Result<Diagram> {
     let mut d = Diagram::default();
     let mut labels = Vec::new();
     walk(&root, &mut d, &mut labels, &mut HashMap::new(), warnings);
-    for (target, body) in labels {
-        let id = target.split('.').next().unwrap_or_default();
+    for (id, body, at) in labels {
         match d.elements.iter_mut().find(|e| e.id == id) {
-            Some(e) => e.label = body.read_into(&mut e.style),
-            None => warnings.push(format!("content anchored to unknown element \"{target}\"")),
+            Some(e) => {
+                e.label = body.read_into(&mut e.style);
+                e.label_at = at;
+            }
+            None => warnings.push(format!("content anchored to unknown element \"{id}\"")),
         }
     }
     Ok(d)
@@ -324,7 +329,7 @@ type Vars = HashMap<String, String>;
 fn walk(
     node: &typst_syntax::SyntaxNode,
     d: &mut Diagram,
-    labels: &mut Vec<(String, Body)>,
+    labels: &mut Vec<(String, Body, Option<LabelAt>)>,
     vars: &mut Vars,
     w: &mut Warnings,
 ) {
@@ -382,6 +387,7 @@ fn value(e: Expr) -> Value {
                 Unit::In => Value::Num(v * 2.54),
                 Unit::Deg => Value::Angle(v),
                 Unit::Rad => Value::Angle(v.to_degrees()),
+                Unit::Percent => Value::Ratio(v / 100.0),
                 _ => Value::Other,
             }
         }
@@ -496,8 +502,8 @@ fn coord(v: &Value) -> Option<Coord> {
     match v {
         Value::Array(a) if a.len() >= 2 => Some(Coord::P(Point::new(a[0].num()?, -a[1].num()?))),
         Value::Str(s) => Some(Coord::Node(s.split('.').next()?.to_string())),
-        Value::Dict(_) => match v.get("name") {
-            Some(Value::Str(s)) => Some(Coord::Node(s.clone())),
+        Value::Dict(_) => match v.get("name").or(v.get("to")) {
+            Some(Value::Str(s)) => Some(Coord::Node(s.split('.').next()?.to_string())),
             _ => None,
         },
         _ => None,
@@ -511,7 +517,14 @@ fn to_end(c: Coord) -> End {
     }
 }
 
-fn element(f: &str, call: Call, d: &mut Diagram, labels: &mut Vec<(String, Body)>, vars: &Vars, w: &mut Warnings) {
+fn element(
+    f: &str,
+    call: Call,
+    d: &mut Diagram,
+    labels: &mut Vec<(String, Body, Option<LabelAt>)>,
+    vars: &Vars,
+    w: &mut Warnings,
+) {
     let coords: Vec<Coord> = call.pos.iter().filter_map(coord).collect();
     let mut style = read_style(&call);
     let id = call.name();
@@ -556,15 +569,26 @@ fn element(f: &str, call: Call, d: &mut Diagram, labels: &mut Vec<(String, Body)
                     *src = path.clone();
                 }
                 let label = body.read_into(&mut style);
-                d.elements.push(Element { id, kind, style, label });
+                d.elements.push(Element {
+                    id,
+                    kind,
+                    style,
+                    label,
+                    label_at: None,
+                });
             };
             match coords.as_slice() {
                 [Coord::Node(target)] => {
-                    let target = match &call.pos[0] {
-                        Value::Str(s) => s.clone(),
-                        _ => target.clone(),
+                    let at = &call.pos[0];
+                    let label_at = match (at.get("anchor"), at.get("rel")) {
+                        (Some(Value::Ratio(t)), _) => Some(LabelAt::Along { t: *t }),
+                        (_, Some(Value::Array(r))) if r.len() == 2 => Some(LabelAt::Offset {
+                            dx: r[0].num().unwrap_or(0.0),
+                            dy: -r[1].num().unwrap_or(0.0),
+                        }),
+                        _ => None,
                     };
-                    return labels.push((target, body));
+                    return labels.push((target.clone(), body, label_at));
                 }
                 [Coord::P(a), Coord::P(b)] => {
                     let kind = if matches!(body, Body::Image(_)) {
@@ -627,6 +651,7 @@ fn element(f: &str, call: Call, d: &mut Diagram, labels: &mut Vec<(String, Body)
         kind,
         style,
         label: String::new(),
+        label_at: None,
     });
 }
 

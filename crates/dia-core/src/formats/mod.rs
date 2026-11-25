@@ -45,9 +45,10 @@ pub(crate) mod tests {
             },
             style,
             label: label.into(),
+            label_at: None,
         };
         let node = |n: &str| End::Node { node: n.into() };
-        Diagram {
+        let mut d = Diagram {
             elements: vec![
                 shape(
                     "n1",
@@ -114,6 +115,7 @@ pub(crate) mod tests {
                         ..Style::default()
                     },
                     label: String::new(),
+                    label_at: None,
                 },
                 Element {
                     id: "e1".into(),
@@ -128,6 +130,7 @@ pub(crate) mod tests {
                         ..Style::default()
                     },
                     label: "$alpha$".into(),
+                    label_at: Some(LabelAt::Along { t: 0.3 }),
                 },
                 Element {
                     id: "e2".into(),
@@ -144,6 +147,7 @@ pub(crate) mod tests {
                         ..Style::default()
                     },
                     label: String::new(),
+                    label_at: None,
                 },
                 Element {
                     id: "e3".into(),
@@ -159,9 +163,12 @@ pub(crate) mod tests {
                         ..Style::default()
                     },
                     label: String::new(),
+                    label_at: None,
                 },
             ],
-        }
+        };
+        d.elements[0].label_at = Some(LabelAt::Offset { dx: 0.5, dy: -0.25 });
+        d
     }
 
     #[test]

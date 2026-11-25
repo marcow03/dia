@@ -16,6 +16,18 @@ pub struct Element {
     /// Typst markup, `$...$` for math. Empty means no label.
     #[serde(default)]
     pub label: String,
+    /// Label placement; `None` centers it (shapes) or puts it at the middle (lines).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_at: Option<LabelAt>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum LabelAt {
+    /// Offset from the shape center in cm (y down).
+    Offset { dx: f64, dy: f64 },
+    /// Position along a line, 0 = start, 1 = end.
+    Along { t: f64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

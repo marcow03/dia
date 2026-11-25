@@ -47,6 +47,12 @@ pub fn write(d: &Diagram) -> String {
                     style[0] = format!("rounded=1;absoluteArcSize=1;arcSize={}", num(s.radius * 2.0 * PX));
                 }
                 style.push("whiteSpace=wrap;html=1".into());
+                // drawio has no label offset; asymmetric spacing shifts the centered text by half the spacing.
+                if let Some(LabelAt::Offset { dx, dy }) = e.label_at {
+                    let (h, v) = (num(dx.abs() * 2.0 * PX), num(dy.abs() * 2.0 * PX));
+                    style.push(format!("spacing{}={h}", if dx < 0.0 { "Right" } else { "Left" }));
+                    style.push(format!("spacing{}={v}", if dy < 0.0 { "Bottom" } else { "Top" }));
+                }
                 style_attrs(s, &mut style);
                 writeln!(
                     out,
@@ -97,9 +103,13 @@ pub fn write(d: &Diagram) -> String {
                     }
                     points.push_str("\n            </Array>");
                 }
+                let label_x = match e.label_at {
+                    Some(LabelAt::Along { t }) => format!(" x=\"{}\"", num(t * 2.0 - 1.0)),
+                    _ => String::new(),
+                };
                 writeln!(
                     out,
-                    "        <mxCell id=\"{id}\" value=\"{value}\" style=\"{};\" edge=\"1\" parent=\"1\"{attrs}>\n          <mxGeometry relative=\"1\" as=\"geometry\">{points}\n          </mxGeometry>\n        </mxCell>",
+                    "        <mxCell id=\"{id}\" value=\"{value}\" style=\"{};\" edge=\"1\" parent=\"1\"{attrs}>\n          <mxGeometry{label_x} relative=\"1\" as=\"geometry\">{points}\n          </mxGeometry>\n        </mxCell>",
                     style.join(";")
                 )
                 .unwrap();
@@ -204,6 +214,7 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
         if get("edgeLabel").is_some() || (c.vertex && by_id.get(c.parent.as_str()).is_some_and(|p| p.edge)) {
             if let Some(e) = d.elements.iter_mut().find(|e| e.id == c.parent) {
                 e.label = label;
+                e.label_at = along(c.rect[0]);
             }
             continue;
         }
@@ -281,6 +292,12 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
                 },
                 style,
                 label,
+                label_at: {
+                    let sp = |k: &str| get(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+                    let dx = (sp("spacingLeft") - sp("spacingRight")) / 2.0 / PX;
+                    let dy = (sp("spacingTop") - sp("spacingBottom")) / 2.0 / PX;
+                    (dx != 0.0 || dy != 0.0).then_some(LabelAt::Offset { dx, dy })
+                },
             });
         } else if c.edge {
             style.end = get("endArrow").map_or(Arrow::Stealth, arrow_from_name);
@@ -304,10 +321,16 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
                 },
                 style,
                 label,
+                label_at: along(c.rect[0]),
             });
         }
     }
     Ok(d)
+}
+
+/// Edge label position from drawio's relative geometry x (-1 = source, 1 = target).
+fn along(x: f64) -> Option<LabelAt> {
+    (x != 0.0).then_some(LabelAt::Along { t: (x + 1.0) / 2.0 })
 }
 
 /// Absolute position of a container, since drawio child geometry is relative to its parent.

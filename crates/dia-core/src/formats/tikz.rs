@@ -39,7 +39,14 @@ pub fn write(d: &Diagram) -> String {
                 if !matches!(shape, ShapeKind::Text | ShapeKind::Image) {
                     style_opts(&e.style, true, &mut opts);
                 }
-                text_opts(&e.style, &mut opts);
+                if let (Some(LabelAt::Offset { dx, dy }), false) = (e.label_at, label.is_empty()) {
+                    let mut label_opts = vec![format!("shift={{({}, {})}}", num(dx), num(-dy))];
+                    text_opts(&e.style, &mut label_opts);
+                    opts.push(format!("label={{[{}]center:{{{label}}}}}", label_opts.join(", ")));
+                    label.clear();
+                } else {
+                    text_opts(&e.style, &mut opts);
+                }
                 opts.push(format!(
                     "minimum width={}cm, minimum height={}cm, inner sep=0pt, align=center",
                     num(*w),
@@ -68,7 +75,11 @@ pub fn write(d: &Diagram) -> String {
                     write!(path, " -- {}", end(to)).unwrap();
                 }
                 if !label.is_empty() {
-                    let mut node_opts = vec!["midway".to_string(), "fill=white".into()];
+                    let pos = match e.label_at {
+                        Some(LabelAt::Along { t }) => format!("pos={}", num(t)),
+                        _ => "midway".into(),
+                    };
+                    let mut node_opts = vec![pos, "fill=white".into()];
                     text_opts(&e.style, &mut node_opts);
                     write!(path, " node[{}] {{{label}}}", node_opts.join(", ")).unwrap();
                 }
@@ -630,6 +641,32 @@ impl Reader<'_> {
             src = path.clone();
             text = "";
         }
+        let mut label = latex_to_typst(text);
+        let mut label_at = None;
+        if let Some(v) = get("label").filter(|_| text.is_empty()) {
+            let (opts, place, body) = parse_label(v);
+            let t = self.style(&opts);
+            (style.font, style.size, style.bold, style.italic, style.color) =
+                (t.font, t.size, t.bold, t.italic, t.color);
+            let shift = opts.iter().find(|(k, _)| k == "shift").and_then(|(_, v)| {
+                let inner = v.trim_matches(|c| "{}() ".contains(c));
+                let (a, b) = inner.split_once(',')?;
+                Some((length(a)?, length(b)?))
+            });
+            let (sx, sy) = shift.unwrap_or_default();
+            let (px, py) = match place.as_str() {
+                "above" => (0.0, -(h / 2.0 + 0.35)),
+                "below" => (0.0, h / 2.0 + 0.35),
+                "left" => (-(w / 2.0 + 0.5), 0.0),
+                "right" => (w / 2.0 + 0.5, 0.0),
+                _ => (0.0, 0.0),
+            };
+            label = latex_to_typst(&body);
+            label_at = Some(LabelAt::Offset {
+                dx: sx + px,
+                dy: py - sy,
+            });
+        }
         let at = spec.at.unwrap_or_default();
         let id = match spec.name {
             Some(n) => n,
@@ -646,7 +683,8 @@ impl Reader<'_> {
                 src,
             },
             style,
-            label: latex_to_typst(text),
+            label,
+            label_at,
         });
         id
     }
@@ -753,6 +791,7 @@ impl Reader<'_> {
         let mut controls: Vec<Point> = vec![];
         let mut curved = false;
         let mut label = String::new();
+        let mut label_at: Option<LabelAt> = None;
         let mut connected = true;
         let mut corner: Option<&str> = None;
         let mut last = Point::default();
@@ -767,7 +806,7 @@ impl Reader<'_> {
                         pos = Pos::P(Point::new(last.x + d.x, last.y + d.y));
                     }
                     if !connected && !pts.is_empty() {
-                        self.flush(&mut pts, &mut controls, curved, &style, &mut label);
+                        self.flush(&mut pts, &mut controls, curved, &style, &mut label, &mut label_at);
                         curved = false;
                     }
                     let p = self.resolve(&pos);
@@ -861,6 +900,7 @@ impl Reader<'_> {
                         let spec = self.node_spec(&toks[start..(j + 1).min(toks.len())], last);
                         if pts.len() >= 2 || connected {
                             label = latex_to_typst(&spec.text);
+                            label_at = node_pos(&spec.opts).map(|t| LabelAt::Along { t });
                             let t = self.style(&spec.opts);
                             (style.font, style.size, style.bold, style.italic, style.color) =
                                 (t.font, t.size, t.bold, t.italic, t.color);
@@ -883,7 +923,7 @@ impl Reader<'_> {
             }
             i += 1;
         }
-        self.flush(&mut pts, &mut controls, curved, &style, &mut label);
+        self.flush(&mut pts, &mut controls, curved, &style, &mut label, &mut label_at);
     }
 
     fn push_shape(&mut self, shape: ShapeKind, a: Point, b: Point, style: &Style) {
@@ -900,6 +940,7 @@ impl Reader<'_> {
             },
             style: style.clone(),
             label: String::new(),
+            label_at: None,
         });
     }
 
@@ -910,6 +951,7 @@ impl Reader<'_> {
         curved: bool,
         style: &Style,
         label: &mut String,
+        label_at: &mut Option<LabelAt>,
     ) {
         if pts.len() < 2 {
             pts.clear();
@@ -940,8 +982,44 @@ impl Reader<'_> {
             kind: Kind::Line { from, to, via, curved },
             style,
             label: std::mem::take(label),
+            label_at: label_at.take(),
         });
     }
+}
+
+/// Position of an inline path node (`pos=0.3`, `near end`, ...); `None` for the middle.
+fn node_pos(opts: &[(String, String)]) -> Option<f64> {
+    let t = opts.iter().find_map(|(k, v)| match k.as_str() {
+        "pos" => v.parse().ok(),
+        "at start" => Some(0.0),
+        "very near start" => Some(0.125),
+        "near start" => Some(0.25),
+        "near end" => Some(0.75),
+        "very near end" => Some(0.875),
+        "at end" => Some(1.0),
+        _ => None,
+    })?;
+    (t != 0.5).then_some(t)
+}
+
+/// Splits a node `label` option like `{[shift={(1,0)}]center:{text}}` into options, position and text.
+fn parse_label(v: &str) -> (Vec<(String, String)>, String, String) {
+    let mut v = v.trim();
+    if v.starts_with('{') && group_end(v, '{', '}') == v.len() {
+        v = &v[1..v.len() - 1];
+    }
+    let mut opts = vec![];
+    if v.starts_with('[') {
+        let e = group_end(v, '[', ']');
+        opts = parse_opts(&v[1..e - 1]);
+        v = &v[e..];
+    }
+    let (place, text) = v.split_once(':').unwrap_or(("center", v));
+    (
+        opts,
+        place.trim().to_string(),
+        text.trim().trim_matches(|c| c == '{' || c == '}').to_string(),
+    )
 }
 
 /// Index of the `-` separating start and end tips in an arrow spec like `{Bar}-{Stealth[length=3mm]}`.
