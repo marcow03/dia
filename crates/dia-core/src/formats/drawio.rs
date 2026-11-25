@@ -65,7 +65,7 @@ pub fn write(d: &Diagram) -> String {
                     ShapeKind::Rect => style.push("rounded=0".to_string()),
                     ShapeKind::Ellipse => style.push("ellipse".into()),
                     ShapeKind::Diamond => style.push("rhombus".into()),
-                    ShapeKind::Text => style.push("text".into()),
+                    ShapeKind::Text => style.push("text;align=left".into()),
                     // `;` separates style entries, so drawio writes data URLs without `;base64`.
                     ShapeKind::Image => style.push(format!(
                         "shape=image;imageAspect=0;image={}",

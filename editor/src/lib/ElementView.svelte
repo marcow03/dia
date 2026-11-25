@@ -1,7 +1,7 @@
 <script lang="ts">
   import { arrowAt, arrowHead, center, labelPoint, linePath, PT_PER_CM } from './geometry'
   import Label from './Label.svelte'
-  import { app } from './state.svelte'
+  import { app, fitTextBox } from './state.svelte'
   import type { Element } from './types'
 
   let { el, scale }: { el: Element; scale: number } = $props()
@@ -17,6 +17,11 @@
   const editing = $derived(app.editing === el.id)
   const handle = $derived(app.selection.length === 1 && app.selection[0] === el.id ? el.id : undefined)
   const lp = $derived(labelPoint(d, el))
+
+  // Text boxes follow their content: label, font, size, weight.
+  $effect(() => {
+    if (el.type === 'shape' && el.shape === 'text' && el.label && !editing) fitTextBox(el)
+  })
 </script>
 
 <g data-id={el.id}>
@@ -49,7 +54,14 @@
       <rect x={el.x} y={el.y} width={el.w} height={el.h} fill="transparent" />
     {/if}
     {#if el.label && !editing}
-      <Label source={el.label} style={el.style} cx={c.x + at.dx} cy={c.y + at.dy} handle={el.shape === 'text' ? undefined : handle} />
+      <Label
+        source={el.label}
+        style={el.style}
+        cx={c.x + at.dx}
+        cy={c.y + at.dy}
+        handle={el.shape === 'text' ? undefined : handle}
+        align={el.shape === 'text' ? 'left' : 'center'}
+      />
     {/if}
     </g>
   {:else}

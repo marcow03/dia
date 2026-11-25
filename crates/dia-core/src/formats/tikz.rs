@@ -70,9 +70,10 @@ pub fn write(d: &Diagram) -> String {
                     text_opts(&e.style, &mut opts);
                 }
                 opts.push(format!(
-                    "minimum width={}cm, minimum height={}cm, inner sep=0pt, align=center",
+                    "minimum width={}cm, minimum height={}cm, inner sep=0pt, align={}",
                     num(*w),
-                    num(*h)
+                    num(*h),
+                    if *shape == ShapeKind::Text { "left" } else { "center" }
                 ));
                 writeln!(
                     out,

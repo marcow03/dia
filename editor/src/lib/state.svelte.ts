@@ -1,6 +1,7 @@
-import { bounds, endCenter, find, PX_PER_CM, rotatePoint } from './geometry'
+import { bounds, endCenter, find, PT_PER_CM, PX_PER_CM, rotatePoint } from './geometry'
+import { renderLabel } from './typst'
 import { deleteDoc, listDocs, loadDoc, saveDoc, type DocMeta } from './docs'
-import { defaultStyle, isNode, type Diagram, type Element, type Point, type ShapeKind, type Style } from './types'
+import { defaultStyle, isNode, type Diagram, type Element, type Point, type Shape, type ShapeKind, type Style } from './types'
 
 export type Tool = 'select' | 'hand' | ShapeKind | 'line' | 'arrow'
 export type DrawTool = Exclude<Tool, 'select' | 'hand' | 'image'>
@@ -126,6 +127,18 @@ export function addShape(shape: ShapeKind, x: number, y: number, w: number, h: n
   const style = shape === 'image' ? { ...defaultStyle(), stroke: null } : structuredClone($state.snapshot(app.defaults[shape as DrawTool]))
   app.diagram.elements.push({ id, type: 'shape', shape, x, y, w, h, style, label: '', ...(src && { src }) })
   return id
+}
+
+/** Sizes a text box to its rendered label, keeping the top-left corner in place. */
+export async function fitTextBox(e: Shape) {
+  const r = await renderLabel(e.label, e.style, 'left')
+  if (!('svg' in r)) return
+  const w = Math.max(r.w / PT_PER_CM + 0.3, 0.5)
+  const h = Math.max(r.h / PT_PER_CM + 0.2, 0.5)
+  if (Math.abs(e.w - w) > 0.01 || Math.abs(e.h - h) > 0.01) {
+    e.w = w
+    e.h = h
+  }
 }
 
 export function addLine(from: Element['id'] | Point, to: Point, tool: 'line' | 'arrow') {

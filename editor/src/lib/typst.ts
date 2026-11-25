@@ -14,14 +14,14 @@ let queue: Promise<unknown> = Promise.resolve()
 
 type TextStyle = Pick<Style, 'font' | 'size' | 'bold' | 'italic' | 'color'>
 
-export function renderLabel(source: string, style: TextStyle): Promise<Rendered> {
+export function renderLabel(source: string, style: TextStyle, align: 'left' | 'center' = 'center'): Promise<Rendered> {
   const text = [`size: ${style.size}pt`, `fill: rgb("${style.color}")`]
   if (style.font) text.push(`font: "${style.font}"`)
   if (style.bold) text.push('weight: "bold"')
   if (style.italic) text.push('style: "italic"')
   const mainContent = `#set page(width: auto, height: auto, margin: 0pt, fill: none)
 #set text(${text.join(', ')})
-#set align(center)
+#set align(${align})
 ${source}`
   let hit = cache.get(mainContent)
   if (!hit) {
