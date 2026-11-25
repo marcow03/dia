@@ -19,17 +19,27 @@ pub fn write(d: &Diagram) -> String {
     for e in &d.elements {
         let label = typst_to_latex(&e.label);
         match &e.kind {
-            Kind::Shape { shape, x, y, w, h } => {
+            Kind::Shape { shape, x, y, w, h, src } => {
                 let mut opts = Vec::new();
+                let mut label = label;
                 match shape {
                     ShapeKind::Rect => opts.push("rectangle".to_string()),
                     ShapeKind::Ellipse => opts.push("ellipse".into()),
                     ShapeKind::Diamond => opts.push(format!("diamond, aspect={}", num(w / h))),
                     ShapeKind::Text => {}
+                    ShapeKind::Image => {
+                        label = format!(
+                            "\\includegraphics[width={}cm, height={}cm]{{{}}}",
+                            num(*w),
+                            num(*h),
+                            image_path(&e.id, src)
+                        )
+                    }
                 }
-                if *shape != ShapeKind::Text {
+                if !matches!(shape, ShapeKind::Text | ShapeKind::Image) {
                     style_opts(&e.style, true, &mut opts);
                 }
+                text_opts(&e.style, &mut opts);
                 opts.push(format!(
                     "minimum width={}cm, minimum height={}cm, inner sep=0pt, align=center",
                     num(*w),
@@ -58,7 +68,9 @@ pub fn write(d: &Diagram) -> String {
                     write!(path, " -- {}", end(to)).unwrap();
                 }
                 if !label.is_empty() {
-                    write!(path, " node[midway, fill=white] {{{label}}}").unwrap();
+                    let mut node_opts = vec!["midway".to_string(), "fill=white".into()];
+                    text_opts(&e.style, &mut node_opts);
+                    write!(path, " node[{}] {{{label}}}", node_opts.join(", ")).unwrap();
                 }
                 let opts = if opts.is_empty() {
                     String::new()
@@ -95,8 +107,15 @@ fn style_opts(s: &Style, node: bool, opts: &mut Vec<String>) {
         }
         (Some(c), _) => opts.push(format!("draw={}", color(c))),
     }
+    if let Some(a) = s.stroke.as_deref().map(|c| split_alpha(c).1).filter(|a| *a < 1.0) {
+        opts.push(format!("draw opacity={}", num(a)));
+    }
     if let Some(f) = &s.fill {
         opts.push(format!("fill={}", color(f)));
+        let a = split_alpha(f).1;
+        if a < 1.0 {
+            opts.push(format!("fill opacity={}, text opacity=1", num(a)));
+        }
     }
     if s.width != 1.0 {
         opts.push(format!("line width={}pt", num(s.width)));
@@ -109,19 +128,79 @@ fn style_opts(s: &Style, node: bool, opts: &mut Vec<String>) {
     if s.radius > 0.0 {
         opts.push(format!("rounded corners={}cm", num(s.radius)));
     }
-    match (s.start_arrow, s.end_arrow) {
-        (false, false) => {}
-        (true, false) => opts.push("Stealth-".into()),
-        (false, true) => opts.push("-Stealth".into()),
-        (true, true) => opts.push("Stealth-Stealth".into()),
+    if s.start != Arrow::None || s.end != Arrow::None {
+        opts.push(format!("{}-{}", tip(s.start), tip(s.end)));
+    }
+}
+
+fn text_opts(s: &Style, opts: &mut Vec<String>) {
+    let mut font = String::new();
+    if s.bold {
+        font.push_str("\\bfseries");
+    }
+    if s.italic {
+        font.push_str("\\itshape");
+    }
+    if s.size != Style::default().size {
+        write!(
+            font,
+            "\\fontsize{{{}}}{{{}}}\\selectfont",
+            num(s.size),
+            num(s.size * 1.2)
+        )
+        .unwrap();
+    }
+    if !font.is_empty() {
+        opts.push(format!("font={font}"));
+    }
+    if s.color != Style::default().color {
+        opts.push(format!("text={}", color(&s.color)));
+        let a = split_alpha(&s.color).1;
+        if a < 1.0 {
+            opts.push(format!("text opacity={}", num(a)));
+        }
+    }
+}
+
+fn tip(a: Arrow) -> &'static str {
+    match a {
+        Arrow::None => "",
+        Arrow::Stealth => "{Stealth}",
+        Arrow::Triangle => "{Triangle}",
+        Arrow::Open => "{Straight Barb}",
+        Arrow::Circle => "{Circle}",
+        Arrow::Diamond => "{Diamond}",
+        Arrow::Bar => "{Bar}",
+    }
+}
+
+fn arrow_from_tip(t: &str) -> Arrow {
+    let name = t.trim().trim_matches(|c| c == '{' || c == '}');
+    let name = name.split('[').next().unwrap_or_default().trim();
+    match name {
+        "" => Arrow::None,
+        ">"
+        | "<"
+        | "to"
+        | "To"
+        | "Straight Barb"
+        | "straight barb"
+        | "Classical TikZ Rightarrow"
+        | "Computer Modern Rightarrow" => Arrow::Open,
+        "stealth" | "Stealth" | "stealth'" => Arrow::Stealth,
+        "Circle" | "o" | "*" => Arrow::Circle,
+        "Diamond" | "diamond" => Arrow::Diamond,
+        "Bar" | "|" => Arrow::Bar,
+        _ => Arrow::Triangle,
     }
 }
 
 fn color(hex: &str) -> String {
+    let hex = split_alpha(hex).0;
     if let Some((name, _)) = BASE_COLORS.iter().find(|(_, h)| *h == hex) {
         return name.to_string();
     }
-    let (r, g, b) = rgb(hex);
+    let (r, g, b) = rgb(&hex);
     format!("{{rgb,255:red,{r};green,{g};blue,{b}}}")
 }
 
@@ -512,7 +591,21 @@ impl Reader<'_> {
         if !drawn {
             style.stroke = None;
         }
-        let shape = if !drawn && style.fill.is_none() {
+        let image = spec.text.split_once("\\includegraphics").map(|(_, rest)| {
+            let toks = tokenize(rest);
+            let opts = toks.iter().find_map(|t| match t {
+                Tok::Opts(o) => Some(parse_opts(o)),
+                _ => None,
+            });
+            let path = toks.iter().find_map(|t| match t {
+                Tok::Brace(b) => Some(b.trim().to_string()),
+                _ => None,
+            });
+            (path.unwrap_or_default(), opts.unwrap_or_default())
+        });
+        let shape = if image.is_some() {
+            ShapeKind::Image
+        } else if !drawn && style.fill.is_none() {
             ShapeKind::Text
         } else {
             shape
@@ -528,6 +621,15 @@ impl Reader<'_> {
             w = w.max(h);
             h = w;
         }
+        let mut src = String::new();
+        let mut text = spec.text.as_str();
+        if let Some((path, opts)) = &image {
+            let dim = |k: &str| opts.iter().find(|(o, _)| o == k).and_then(|(_, v)| length(v));
+            w = dim("width").unwrap_or(w);
+            h = dim("height").unwrap_or(h);
+            src = path.clone();
+            text = "";
+        }
         let at = spec.at.unwrap_or_default();
         let id = match spec.name {
             Some(n) => n,
@@ -541,15 +643,17 @@ impl Reader<'_> {
                 y: at.y - h / 2.0,
                 w,
                 h,
+                src,
             },
             style,
-            label: latex_to_typst(&spec.text),
+            label: latex_to_typst(text),
         });
         id
     }
 
     fn style(&mut self, opts: &[(String, String)]) -> Style {
         let mut s = Style::default();
+        let mut opacity: (Option<f64>, Option<f64>, Option<f64>) = (None, None, None);
         for (k, v) in opts {
             match (k.as_str(), v.as_str()) {
                 ("draw" | "color", c) if !c.is_empty() => s.stroke = if c == "none" { None } else { self.color(c) },
@@ -565,13 +669,23 @@ impl Reader<'_> {
                 ("rounded corners", r) => s.radius = if r.is_empty() { 0.14 } else { length(r).unwrap_or(0.14) },
                 (k, "") if k.ends_with("dashed") => s.dash = Dash::Dashed,
                 (k, "") if k.ends_with("dotted") => s.dash = Dash::Dotted,
-                (k, "") if k.contains('-') && !k.contains(' ') => {
-                    let stripped: String = k.chars().filter(|c| !"{}".contains(*c)).collect();
-                    if let Some((a, b)) = stripped.split_once('-') {
-                        s.start_arrow = !a.is_empty();
-                        s.end_arrow = !b.is_empty();
+                (k, "") if is_arrow_spec(k) => {
+                    let i = arrow_dash(k).unwrap();
+                    s.start = arrow_from_tip(&k[..i]);
+                    s.end = arrow_from_tip(&k[i + 1..]);
+                }
+                ("text", c) => s.color = self.color(c).unwrap_or(s.color),
+                ("font", f) => {
+                    s.bold = f.contains("\\bfseries") || f.contains("\\bf");
+                    s.italic = f.contains("\\itshape") || f.contains("\\it") || f.contains("\\slshape");
+                    if let Some(size) = font_size(f) {
+                        s.size = size;
                     }
                 }
+                ("opacity", a) => opacity = (a.parse().ok(), a.parse().ok(), opacity.2),
+                ("draw opacity", a) => opacity.0 = a.parse().ok(),
+                ("fill opacity", a) => opacity.1 = a.parse().ok(),
+                ("text opacity", a) => opacity.2 = a.parse().ok(),
                 (k, "")
                     if BASE_COLORS.iter().any(|(n, _)| *n == k) || self.colors.contains_key(k) || k.contains('!') =>
                 {
@@ -579,6 +693,15 @@ impl Reader<'_> {
                 }
                 _ => {}
             }
+        }
+        if let (Some(a), Some(c)) = (opacity.0, &s.stroke) {
+            s.stroke = Some(with_alpha(&split_alpha(c).0, a));
+        }
+        if let (Some(a), Some(c)) = (opacity.1, &s.fill) {
+            s.fill = Some(with_alpha(&split_alpha(c).0, a));
+        }
+        if let Some(a) = opacity.2 {
+            s.color = with_alpha(&split_alpha(&s.color).0, a);
         }
         s
     }
@@ -738,6 +861,9 @@ impl Reader<'_> {
                         let spec = self.node_spec(&toks[start..(j + 1).min(toks.len())], last);
                         if pts.len() >= 2 || connected {
                             label = latex_to_typst(&spec.text);
+                            let t = self.style(&spec.opts);
+                            (style.font, style.size, style.bold, style.italic, style.color) =
+                                (t.font, t.size, t.bold, t.italic, t.color);
                         } else {
                             pts.pop();
                             self.add_node(spec);
@@ -770,6 +896,7 @@ impl Reader<'_> {
                 y: a.y.min(b.y),
                 w: (a.x - b.x).abs(),
                 h: (a.y - b.y).abs(),
+                src: String::new(),
             },
             style: style.clone(),
             label: String::new(),
@@ -815,6 +942,58 @@ impl Reader<'_> {
             label: std::mem::take(label),
         });
     }
+}
+
+/// Index of the `-` separating start and end tips in an arrow spec like `{Bar}-{Stealth[length=3mm]}`.
+fn arrow_dash(k: &str) -> Option<usize> {
+    let mut depth = 0;
+    for (i, c) in k.char_indices() {
+        match c {
+            '{' | '[' => depth += 1,
+            '}' | ']' => depth -= 1,
+            '-' if depth == 0 => return Some(i),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn is_arrow_spec(k: &str) -> bool {
+    let Some(i) = arrow_dash(k) else { return false };
+    let outside = |s: &str| {
+        let mut depth = 0;
+        s.chars().all(|c| {
+            match c {
+                '{' | '[' => depth += 1,
+                '}' | ']' => depth -= 1,
+                ' ' if depth == 0 => return false,
+                _ => {}
+            }
+            true
+        })
+    };
+    outside(&k[..i]) && outside(&k[i + 1..]) && !k[i + 1..].contains('-')
+}
+
+fn font_size(f: &str) -> Option<f64> {
+    if let Some(rest) = f.split("\\fontsize{").nth(1) {
+        return rest.split('}').next()?.trim_end_matches("pt").parse().ok();
+    }
+    [
+        ("\\tiny", 5.0),
+        ("\\scriptsize", 7.0),
+        ("\\footnotesize", 8.0),
+        ("\\small", 9.0),
+        ("\\normalsize", 10.0),
+        ("\\large", 12.0),
+        ("\\Large", 14.4),
+        ("\\LARGE", 17.28),
+        ("\\huge", 20.74),
+        ("\\Huge", 24.88),
+    ]
+    .iter()
+    .find(|(cmd, _)| f.split('\\').any(|part| format!("\\{part}").trim() == *cmd))
+    .map(|(_, s)| *s)
 }
 
 fn hex3(r: f64, g: f64, b: f64) -> String {
@@ -868,7 +1047,7 @@ mod tests {
             .filter(|e| matches!(e.kind, Kind::Line { .. }))
             .collect();
         assert_eq!(lines.len(), 2);
-        assert!(lines[0].style.end_arrow);
+        assert_eq!(lines[0].style.end, Arrow::Open);
         assert_eq!(lines[0].style.width, 0.8);
         if let Kind::Line { via, to, .. } = &lines[1].kind {
             assert_eq!(via.len(), 2);

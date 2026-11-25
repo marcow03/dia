@@ -31,12 +31,17 @@ pub fn write(d: &Diagram) -> String {
         let s = &e.style;
         let mut style = Vec::new();
         match &e.kind {
-            Kind::Shape { shape, x, y, w, h } => {
+            Kind::Shape { shape, x, y, w, h, src } => {
                 match shape {
                     ShapeKind::Rect => style.push("rounded=0".to_string()),
                     ShapeKind::Ellipse => style.push("ellipse".into()),
                     ShapeKind::Diamond => style.push("rhombus".into()),
                     ShapeKind::Text => style.push("text".into()),
+                    // `;` separates style entries, so drawio writes data URLs without `;base64`.
+                    ShapeKind::Image => style.push(format!(
+                        "shape=image;imageAspect=0;image={}",
+                        src.replacen(";base64,", ",", 1)
+                    )),
                 }
                 if s.radius > 0.0 {
                     style[0] = format!("rounded=1;absoluteArcSize=1;arcSize={}", num(s.radius * 2.0 * PX));
@@ -56,8 +61,8 @@ pub fn write(d: &Diagram) -> String {
             }
             Kind::Line { from, to, via, curved } => {
                 style.push("html=1;rounded=0".into());
-                style.push(format!("endArrow={}", if s.end_arrow { "classic" } else { "none" }));
-                style.push(format!("startArrow={}", if s.start_arrow { "classic" } else { "none" }));
+                style.push(format!("endArrow={};endFill=1", arrow_name(s.end)));
+                style.push(format!("startArrow={};startFill=1", arrow_name(s.start)));
                 if *curved {
                     style.push("curved=1".into());
                 }
@@ -106,8 +111,28 @@ pub fn write(d: &Diagram) -> String {
 }
 
 fn style_attrs(s: &Style, style: &mut Vec<String>) {
-    style.push(format!("strokeColor={}", s.stroke.as_deref().unwrap_or("none")));
-    style.push(format!("fillColor={}", s.fill.as_deref().unwrap_or("none")));
+    for (key, c) in [("stroke", &s.stroke), ("fill", &s.fill)] {
+        match c.as_deref().map(split_alpha) {
+            None => style.push(format!("{key}Color=none")),
+            Some((rgb, a)) => {
+                style.push(format!("{key}Color={rgb}"));
+                if a < 1.0 {
+                    style.push(format!("{key}Opacity={}", num(a * 100.0)));
+                }
+            }
+        }
+    }
+    let (rgb, a) = split_alpha(&s.color);
+    style.push(format!("fontColor={rgb};fontSize={}", num(s.size)));
+    if a < 1.0 {
+        style.push(format!("textOpacity={}", num(a * 100.0)));
+    }
+    if s.bold || s.italic {
+        style.push(format!("fontStyle={}", s.bold as u8 + 2 * s.italic as u8));
+    }
+    if let Some(f) = &s.font {
+        style.push(format!("fontFamily={f}"));
+    }
     if s.width != 1.0 {
         style.push(format!("strokeWidth={}", num(s.width)));
     }
@@ -115,6 +140,30 @@ fn style_attrs(s: &Style, style: &mut Vec<String>) {
         Dash::Solid => {}
         Dash::Dashed => style.push("dashed=1".into()),
         Dash::Dotted => style.push("dashed=1;dashPattern=1 2".into()),
+    }
+}
+
+fn arrow_name(a: Arrow) -> &'static str {
+    match a {
+        Arrow::None => "none",
+        Arrow::Stealth => "classic",
+        Arrow::Triangle => "block",
+        Arrow::Open => "open",
+        Arrow::Circle => "oval",
+        Arrow::Diamond => "diamond",
+        Arrow::Bar => "dash",
+    }
+}
+
+fn arrow_from_name(n: &str) -> Arrow {
+    match n {
+        "none" | "" => Arrow::None,
+        "classic" | "classicThin" => Arrow::Stealth,
+        "open" | "openThin" | "openAsync" => Arrow::Open,
+        "oval" | "circle" | "circlePlus" => Arrow::Circle,
+        "diamond" | "diamondThin" => Arrow::Diamond,
+        "dash" | "baseDash" | "ERmandOne" => Arrow::Bar,
+        _ => Arrow::Triangle,
     }
 }
 
@@ -158,8 +207,22 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
             }
             continue;
         }
+        let opacity = |k: &str| get(k).and_then(|v| v.parse::<f64>().ok()).map_or(1.0, |v| v / 100.0);
+        let alpha = |c: Option<String>, k: &str| c.map(|c| with_alpha(&c, opacity(k)));
         let mut style = Style {
-            stroke: color(get("strokeColor"), Some("#000000")),
+            stroke: alpha(color(get("strokeColor"), Some("#000000")), "strokeOpacity"),
+            color: with_alpha(
+                &color(get("fontColor"), Some("#000000")).unwrap(),
+                opacity("textOpacity"),
+            ),
+            size: get("fontSize").and_then(|v| v.parse().ok()).unwrap_or(11.0),
+            bold: get("fontStyle")
+                .and_then(|v| v.parse::<u8>().ok())
+                .is_some_and(|f| f & 1 != 0),
+            italic: get("fontStyle")
+                .and_then(|v| v.parse::<u8>().ok())
+                .is_some_and(|f| f & 2 != 0),
+            font: get("fontFamily").map(String::from),
             width: get("strokeWidth").and_then(|v| v.parse().ok()).unwrap_or(1.0),
             dash: match (get("dashed"), get("dashPattern")) {
                 (Some("1"), Some(p)) if p.starts_with("1 ") => Dash::Dotted,
@@ -174,6 +237,7 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
                 Some("ellipse") => ShapeKind::Ellipse,
                 Some("rhombus") => ShapeKind::Diamond,
                 Some("text") => ShapeKind::Text,
+                Some("image") => ShapeKind::Image,
                 Some(other) => {
                     w.push(format!("unsupported drawio shape `{other}` imported as rectangle"));
                     ShapeKind::Rect
@@ -181,15 +245,21 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
                 _ => ShapeKind::Rect,
             };
             let [x, y, cw, ch] = c.rect;
-            let fill_default = if shape == ShapeKind::Text {
-                None
-            } else {
-                Some("#ffffff")
-            };
-            style.fill = color(get("fillColor"), fill_default);
-            if shape == ShapeKind::Text {
-                style.stroke = color(get("strokeColor"), None);
+            let plain = matches!(shape, ShapeKind::Text | ShapeKind::Image);
+            style.fill = alpha(
+                color(get("fillColor"), if plain { None } else { Some("#ffffff") }),
+                "fillOpacity",
+            );
+            if plain {
+                style.stroke = alpha(color(get("strokeColor"), None), "strokeOpacity");
             }
+            let src = match get("image") {
+                Some(img) if shape == ShapeKind::Image => match img.strip_prefix("data:") {
+                    Some(rest) if !rest.contains(";base64") => format!("data:{}", rest.replacen(',', ";base64,", 1)),
+                    _ => img.to_string(),
+                },
+                _ => String::new(),
+            };
             if get("rounded") == Some("1") && shape == ShapeKind::Rect {
                 let arc: Option<f64> = get("arcSize").and_then(|v| v.parse().ok());
                 style.radius = if get("absoluteArcSize") == Some("1") {
@@ -207,13 +277,14 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
                     y: p.y,
                     w: cw / PX,
                     h: ch / PX,
+                    src,
                 },
                 style,
                 label,
             });
         } else if c.edge {
-            style.end_arrow = get("endArrow") != Some("none");
-            style.start_arrow = get("startArrow").is_some_and(|v| v != "none");
+            style.end = get("endArrow").map_or(Arrow::Stealth, arrow_from_name);
+            style.start = get("startArrow").map_or(Arrow::None, arrow_from_name);
             let end = |node: &Option<String>, point: Option<Point>| match (node, point) {
                 (Some(n), _) => Some(End::Node { node: n.clone() }),
                 (None, Some(p)) => Some(End::Point(px(p))),
@@ -446,7 +517,7 @@ mod tests {
         assert_eq!(d.get("a").unwrap().style.radius, 0.225);
         assert_eq!(d.get("b").unwrap().style.fill.as_deref(), Some("#dae8fc"));
         let c = d.get("c").unwrap();
-        assert!(c.style.end_arrow);
+        assert_eq!(c.style.end, Arrow::Stealth);
         assert_eq!(c.label, "$x^2$");
     }
 }

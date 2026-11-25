@@ -41,6 +41,7 @@ pub(crate) mod tests {
                 y,
                 w: 3.0,
                 h: 1.5,
+                src: String::new(),
             },
             style,
             label: label.into(),
@@ -60,7 +61,17 @@ pub(crate) mod tests {
                         ..Style::default()
                     },
                 ),
-                shape("n2", ShapeKind::Ellipse, 5.0, 0.0, "$x^2 + y^2$", Style::default()),
+                shape(
+                    "n2",
+                    ShapeKind::Ellipse,
+                    5.0,
+                    0.0,
+                    "$x^2 + y^2$",
+                    Style {
+                        fill: Some("#34c75980".into()),
+                        ..Style::default()
+                    },
+                ),
                 shape(
                     "n3",
                     ShapeKind::Diamond,
@@ -81,9 +92,29 @@ pub(crate) mod tests {
                     "note",
                     Style {
                         stroke: None,
+                        size: 14.0,
+                        bold: true,
+                        italic: true,
+                        color: "#ff3b30".into(),
                         ..Style::default()
                     },
                 ),
+                Element {
+                    id: "i1".into(),
+                    kind: Kind::Shape {
+                        shape: ShapeKind::Image,
+                        x: 10.0,
+                        y: 0.0,
+                        w: 2.0,
+                        h: 1.0,
+                        src: "logo.png".into(),
+                    },
+                    style: Style {
+                        stroke: None,
+                        ..Style::default()
+                    },
+                    label: String::new(),
+                },
                 Element {
                     id: "e1".into(),
                     kind: Kind::Line {
@@ -93,7 +124,7 @@ pub(crate) mod tests {
                         curved: false,
                     },
                     style: Style {
-                        end_arrow: true,
+                        end: Arrow::Stealth,
                         ..Style::default()
                     },
                     label: "$alpha$".into(),
@@ -107,9 +138,9 @@ pub(crate) mod tests {
                         curved: false,
                     },
                     style: Style {
-                        dash: Dash::Dashed,
-                        end_arrow: true,
-                        start_arrow: true,
+                        dash: Dash::Dotted,
+                        start: Arrow::Circle,
+                        end: Arrow::Triangle,
                         ..Style::default()
                     },
                     label: String::new(),
@@ -122,7 +153,11 @@ pub(crate) mod tests {
                         via: vec![Point::new(2.0, 5.0), Point::new(4.0, 7.0)],
                         curved: true,
                     },
-                    style: Style::default(),
+                    style: Style {
+                        end: Arrow::Open,
+                        width: 0.5,
+                        ..Style::default()
+                    },
                     label: String::new(),
                 },
             ],

@@ -27,6 +27,9 @@ pub enum Kind {
         y: f64,
         w: f64,
         h: f64,
+        /// Image path or data URL, only for `ShapeKind::Image`.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        src: String,
     },
     Line {
         from: End,
@@ -46,6 +49,20 @@ pub enum ShapeKind {
     Ellipse,
     Diamond,
     Text,
+    Image,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Arrow {
+    #[default]
+    None,
+    Stealth,
+    Triangle,
+    Open,
+    Circle,
+    Diamond,
+    Bar,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -73,7 +90,7 @@ pub enum Dash {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Style {
-    /// Hex colors like `#1e88e5`. `None` means no stroke / no fill.
+    /// Hex colors like `#1e88e5` or `#1e88e580` with alpha. `None` means no stroke / no fill.
     pub stroke: Option<String>,
     pub fill: Option<String>,
     /// Stroke width in pt.
@@ -81,8 +98,16 @@ pub struct Style {
     pub dash: Dash,
     /// Corner radius in cm.
     pub radius: f64,
-    pub start_arrow: bool,
-    pub end_arrow: bool,
+    pub start: Arrow,
+    pub end: Arrow,
+    /// Label font family; `None` uses the target's default.
+    pub font: Option<String>,
+    /// Label font size in pt.
+    pub size: f64,
+    pub bold: bool,
+    pub italic: bool,
+    /// Label text color.
+    pub color: String,
 }
 
 impl Default for Style {
@@ -93,9 +118,49 @@ impl Default for Style {
             width: 1.0,
             dash: Dash::Solid,
             radius: 0.0,
-            start_arrow: false,
-            end_arrow: false,
+            start: Arrow::None,
+            end: Arrow::None,
+            font: None,
+            size: 11.0,
+            bold: false,
+            italic: false,
+            color: "#000000".into(),
         }
+    }
+}
+
+impl Style {
+    pub fn has_text_style(&self) -> bool {
+        let d = Style::default();
+        self.font.is_some() || self.size != d.size || self.bold || self.italic || self.color != d.color
+    }
+}
+
+/// Splits `#rrggbbaa` into `#rrggbb` and an alpha in 0..=1.
+pub fn split_alpha(hex: &str) -> (String, f64) {
+    match hex.get(7..9).and_then(|a| u8::from_str_radix(a, 16).ok()) {
+        Some(a) => (hex[..7].to_string(), (a as f64 / 255.0 * 100.0).round() / 100.0),
+        None => (hex.to_string(), 1.0),
+    }
+}
+
+/// Inverse of [`split_alpha`]; drops the alpha when it is 1.
+pub fn with_alpha(rgb: &str, alpha: f64) -> String {
+    if alpha >= 1.0 {
+        rgb.to_string()
+    } else {
+        format!("{rgb}{:02x}", (alpha.clamp(0.0, 1.0) * 255.0).round() as u8)
+    }
+}
+
+/// File name for an image source; data URLs get a name derived from the element id.
+pub fn image_path(id: &str, src: &str) -> String {
+    match src.strip_prefix("data:image/") {
+        Some(rest) => {
+            let ext = rest.split([';', ',', '+']).next().unwrap_or("png");
+            format!("{id}.{}", if ext == "jpeg" { "jpg" } else { ext })
+        }
+        None => src.to_string(),
     }
 }
 

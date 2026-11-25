@@ -20,7 +20,7 @@ pub fn write(d: &Diagram) -> String {
     for e in &d.elements {
         let mut args = Vec::new();
         let call = match &e.kind {
-            Kind::Shape { shape, x, y, w, h } => {
+            Kind::Shape { shape, x, y, w, h, src } => {
                 let (x2, y2) = (x + w, y + h);
                 match shape {
                     ShapeKind::Rect => {
@@ -46,7 +46,18 @@ pub fn write(d: &Diagram) -> String {
                     ShapeKind::Text => {
                         args.push(pt(*x, *y));
                         args.push(pt(x2, y2));
-                        args.push(format!("[{}]", e.label));
+                        args.push(label_body(&e.label, &e.style));
+                        "content"
+                    }
+                    ShapeKind::Image => {
+                        args.push(pt(*x, *y));
+                        args.push(pt(x2, y2));
+                        args.push(format!(
+                            "image(\"{}\", width: {}cm, height: {}cm, fit: \"stretch\")",
+                            image_path(&e.id, src),
+                            num(*w),
+                            num(*h)
+                        ));
                         "content"
                     }
                 }
@@ -71,7 +82,7 @@ pub fn write(d: &Diagram) -> String {
         let is_text = matches!(
             e.kind,
             Kind::Shape {
-                shape: ShapeKind::Text,
+                shape: ShapeKind::Text | ShapeKind::Image,
                 ..
             }
         );
@@ -87,11 +98,12 @@ pub fn write(d: &Diagram) -> String {
             if is_line {
                 writeln!(
                     out,
-                    "  content(\"{}.mid\", [{}], frame: \"rect\", fill: white, stroke: none, padding: 0.1)",
-                    e.id, e.label
+                    "  content(\"{}.mid\", {}, frame: \"rect\", fill: white, stroke: none, padding: 0.1)",
+                    e.id,
+                    label_body(&e.label, &e.style)
                 )
             } else {
-                writeln!(out, "  content(\"{}\", [{}])", e.id, e.label)
+                writeln!(out, "  content(\"{}\", {})", e.id, label_body(&e.label, &e.style))
             }
             .unwrap();
         }
@@ -139,11 +151,10 @@ fn style_args(s: &Style, closed: bool, args: &mut Vec<String>) {
         args.push(format!("radius: {}", num(s.radius)));
     }
     let mut marks = Vec::new();
-    if s.start_arrow {
-        marks.push("start: \"stealth\"");
-    }
-    if s.end_arrow {
-        marks.push("end: \"stealth\"");
+    for (key, arrow) in [("start", s.start), ("end", s.end)] {
+        if let Some(m) = mark_name(arrow) {
+            marks.push(format!("{key}: \"{m}\""));
+        }
     }
     if !marks.is_empty() {
         args.push(format!(
@@ -156,6 +167,52 @@ fn style_args(s: &Style, closed: bool, args: &mut Vec<String>) {
 
 fn color(hex: &str) -> String {
     format!("rgb(\"{hex}\")")
+}
+
+fn mark_name(a: Arrow) -> Option<&'static str> {
+    Some(match a {
+        Arrow::None => return None,
+        Arrow::Stealth => "stealth",
+        Arrow::Triangle => ">",
+        Arrow::Open => "straight",
+        Arrow::Circle => "o",
+        Arrow::Diamond => "<>",
+        Arrow::Bar => "|",
+    })
+}
+
+fn arrow_from_mark(m: &str) -> Arrow {
+    match m {
+        "stealth" => Arrow::Stealth,
+        "straight" | "barbed" | "hook" => Arrow::Open,
+        "o" | "circle" => Arrow::Circle,
+        "<>" | "diamond" => Arrow::Diamond,
+        "|" | "bar" | "]" | "[" => Arrow::Bar,
+        _ => Arrow::Triangle,
+    }
+}
+
+fn label_body(label: &str, s: &Style) -> String {
+    if !s.has_text_style() {
+        return format!("[{label}]");
+    }
+    let mut args = Vec::new();
+    if let Some(f) = &s.font {
+        args.push(format!("font: \"{f}\""));
+    }
+    if s.size != Style::default().size {
+        args.push(format!("size: {}pt", num(s.size)));
+    }
+    if s.bold {
+        args.push("weight: \"bold\"".into());
+    }
+    if s.italic {
+        args.push("style: \"italic\"".into());
+    }
+    if s.color != Style::default().color {
+        args.push(format!("fill: {}", color(&s.color)));
+    }
+    format!("text({})[{label}]", args.join(", "))
 }
 
 // ---------- reader ----------
@@ -171,6 +228,7 @@ enum Value {
     Array(Vec<Value>),
     Dict(Vec<(String, Value)>),
     Content(String),
+    Call(String, Call),
     Other,
 }
 
@@ -190,6 +248,7 @@ impl Value {
     }
 }
 
+#[derive(Debug, Clone)]
 struct Call {
     pos: Vec<Value>,
     named: Vec<(String, Value)>,
@@ -216,10 +275,10 @@ pub fn read(src: &str, warnings: &mut Warnings) -> Result<Diagram> {
     let mut d = Diagram::default();
     let mut labels = Vec::new();
     walk(&root, &mut d, &mut labels, warnings);
-    for (target, text) in labels {
+    for (target, body) in labels {
         let id = target.split('.').next().unwrap_or_default();
         match d.elements.iter_mut().find(|e| e.id == id) {
-            Some(e) => e.label = text,
+            Some(e) => e.label = body.read_into(&mut e.style),
             None => warnings.push(format!("content anchored to unknown element \"{target}\"")),
         }
     }
@@ -239,7 +298,7 @@ const UNSUPPORTED_FNS: &[&str] = &[
     "n-star",
 ];
 
-fn walk(node: &typst_syntax::SyntaxNode, d: &mut Diagram, labels: &mut Vec<(String, String)>, w: &mut Warnings) {
+fn walk(node: &typst_syntax::SyntaxNode, d: &mut Diagram, labels: &mut Vec<(String, Body)>, w: &mut Warnings) {
     if let Some(call) = node.cast::<ast::FuncCall>()
         && let Expr::Ident(id) = call.callee()
     {
@@ -265,15 +324,15 @@ fn call_args(args: ast::Args) -> Call {
     };
     for arg in args.items() {
         match arg {
-            ast::Arg::Pos(e) => call.pos.push(eval(e)),
-            ast::Arg::Named(n) => call.named.push((n.name().get().to_string(), eval(n.expr()))),
+            ast::Arg::Pos(e) => call.pos.push(value(e)),
+            ast::Arg::Named(n) => call.named.push((n.name().get().to_string(), value(n.expr()))),
             ast::Arg::Spread(_) => {}
         }
     }
     call
 }
 
-fn eval(e: Expr) -> Value {
+fn value(e: Expr) -> Value {
     match e {
         Expr::Int(i) => Value::Num(i.get() as f64),
         Expr::Float(f) => Value::Num(f.get()),
@@ -293,11 +352,11 @@ fn eval(e: Expr) -> Value {
         Expr::Str(s) => Value::Str(s.get().to_string()),
         Expr::Bool(b) => Value::Bool(b.get()),
         Expr::None(_) => Value::None,
-        Expr::Parenthesized(p) => eval(p.expr()),
+        Expr::Parenthesized(p) => value(p.expr()),
         Expr::Array(a) => Value::Array(
             a.items()
                 .filter_map(|i| match i {
-                    ast::ArrayItem::Pos(e) => Some(eval(e)),
+                    ast::ArrayItem::Pos(e) => Some(value(e)),
                     _ => None,
                 })
                 .collect(),
@@ -305,7 +364,7 @@ fn eval(e: Expr) -> Value {
         Expr::Dict(dict) => Value::Dict(
             dict.items()
                 .filter_map(|i| match i {
-                    ast::DictItem::Named(n) => Some((n.name().get().to_string(), eval(n.expr()))),
+                    ast::DictItem::Named(n) => Some((n.name().get().to_string(), value(n.expr()))),
                     _ => None,
                 })
                 .collect(),
@@ -314,7 +373,7 @@ fn eval(e: Expr) -> Value {
         Expr::Ident(i) => named_color(i.get())
             .map(|c| Value::Color(c.into()))
             .unwrap_or(Value::Other),
-        Expr::Unary(u) if u.op() == ast::UnOp::Neg => match eval(u.expr()) {
+        Expr::Unary(u) if u.op() == ast::UnOp::Neg => match value(u.expr()) {
             Value::Num(n) => Value::Num(-n),
             Value::Angle(n) => Value::Angle(-n),
             _ => Value::Other,
@@ -322,7 +381,7 @@ fn eval(e: Expr) -> Value {
         Expr::Binary(b) if b.op() == ast::BinOp::Add => {
             // `1pt + red` stroke shorthand
             let mut items = Vec::new();
-            for v in [eval(b.lhs()), eval(b.rhs())] {
+            for v in [value(b.lhs()), value(b.rhs())] {
                 match v {
                     Value::Num(n) => items.push(("thickness".into(), Value::Num(n))),
                     Value::Color(c) => items.push(("paint".into(), Value::Color(c))),
@@ -336,17 +395,20 @@ fn eval(e: Expr) -> Value {
                 let args = call_args(call.args());
                 match args.pos.as_slice() {
                     [Value::Str(s)] => Value::Color(normalize_hex(s)),
-                    [r, g, b, ..] => {
+                    [r, g, b, rest @ ..] => {
                         let c = |v: &Value| v.num().unwrap_or(0.0).clamp(0.0, 255.0) as u8;
-                        Value::Color(format!("#{:02x}{:02x}{:02x}", c(r), c(g), c(b)))
+                        let rgb = format!("#{:02x}{:02x}{:02x}", c(r), c(g), c(b));
+                        let alpha = rest.first().and_then(Value::num).map_or(1.0, |a| a / 255.0);
+                        Value::Color(with_alpha(&rgb, alpha))
                     }
                     _ => Value::Other,
                 }
             }
-            Expr::FieldAccess(f) => eval(f.target()),
+            Expr::FieldAccess(f) => value(f.target()),
+            Expr::Ident(id) => Value::Call(id.get().to_string(), call_args(call.args())),
             _ => Value::Other,
         },
-        Expr::FieldAccess(f) => eval(f.target()),
+        Expr::FieldAccess(f) => value(f.target()),
         _ => Value::Other,
     }
 }
@@ -413,7 +475,7 @@ fn to_end(c: Coord) -> End {
     }
 }
 
-fn element(f: &str, call: Call, d: &mut Diagram, labels: &mut Vec<(String, String)>, w: &mut Warnings) {
+fn element(f: &str, call: Call, d: &mut Diagram, labels: &mut Vec<(String, Body)>, w: &mut Warnings) {
     let coords: Vec<Coord> = call.pos.iter().filter_map(coord).collect();
     let mut style = read_style(&call);
     let id = call.name();
@@ -442,48 +504,45 @@ fn element(f: &str, call: Call, d: &mut Diagram, labels: &mut Vec<(String, Strin
             shape(kind, Point::new(c.x - rx, c.y - ry), Point::new(c.x + rx, c.y + ry))
         }
         "content" => {
-            let text = call.pos.iter().find_map(|v| match v {
-                Value::Content(s) => Some(s.clone()),
-                Value::Str(s) if call.pos.len() == 1 => Some(s.clone()),
-                _ => None,
-            });
-            let text = text.unwrap_or_default();
+            let body = call
+                .pos
+                .iter()
+                .find_map(Body::from_value)
+                .unwrap_or(Body::Text(String::new()));
+            let text_shape = |kind: ShapeKind, a: Point, b: Point, d: &mut Diagram, body: Body| {
+                let mut style = Style {
+                    stroke: None,
+                    ..Style::default()
+                };
+                let id = id.clone().unwrap_or_else(|| d.fresh_id("t"));
+                let mut kind = shape(kind, a, b);
+                if let (Kind::Shape { src, .. }, Body::Image(path)) = (&mut kind, &body) {
+                    *src = path.clone();
+                }
+                let label = body.read_into(&mut style);
+                d.elements.push(Element { id, kind, style, label });
+            };
             match coords.as_slice() {
                 [Coord::Node(target)] => {
                     let target = match &call.pos[0] {
                         Value::Str(s) => s.clone(),
                         _ => target.clone(),
                     };
-                    return labels.push((target, text));
+                    return labels.push((target, body));
                 }
                 [Coord::P(a), Coord::P(b)] => {
-                    let id = id.unwrap_or_else(|| d.fresh_id("t"));
-                    return d.elements.push(Element {
-                        id,
-                        kind: shape(ShapeKind::Text, *a, *b),
-                        style: Style {
-                            stroke: None,
-                            ..Style::default()
-                        },
-                        label: text,
-                    });
+                    let kind = if matches!(body, Body::Image(_)) {
+                        ShapeKind::Image
+                    } else {
+                        ShapeKind::Text
+                    };
+                    return text_shape(kind, *a, *b, d, body);
                 }
                 [Coord::P(p)] => {
-                    let (w2, h2) = ((text.chars().count() as f64 * 0.12).max(0.5), 0.35);
-                    let id = id.unwrap_or_else(|| d.fresh_id("t"));
-                    return d.elements.push(Element {
-                        id,
-                        kind: shape(
-                            ShapeKind::Text,
-                            Point::new(p.x - w2, p.y - h2),
-                            Point::new(p.x + w2, p.y + h2),
-                        ),
-                        style: Style {
-                            stroke: None,
-                            ..Style::default()
-                        },
-                        label: text,
-                    });
+                    let chars = body.text().chars().count() as f64;
+                    let (w2, h2) = ((chars * 0.12).max(0.5), 0.35);
+                    let (a, b) = (Point::new(p.x - w2, p.y - h2), Point::new(p.x + w2, p.y + h2));
+                    return text_shape(ShapeKind::Text, a, b, d, body);
                 }
                 _ => return w.push("content with unsupported position skipped".into()),
             }
@@ -542,6 +601,64 @@ fn shape(shape: ShapeKind, a: Point, b: Point) -> Kind {
         y: a.y.min(b.y),
         w: (a.x - b.x).abs(),
         h: (a.y - b.y).abs(),
+        src: String::new(),
+    }
+}
+
+/// The body of a `content` call: plain markup, `text(..)[markup]` or `image(..)`.
+enum Body {
+    Text(String),
+    Styled(String, Call),
+    Image(String),
+}
+
+impl Body {
+    fn from_value(v: &Value) -> Option<Body> {
+        match v {
+            Value::Content(s) => Some(Body::Text(s.clone())),
+            Value::Call(f, c) if f == "text" => {
+                let text = c.pos.iter().find_map(|v| match v {
+                    Value::Content(s) | Value::Str(s) => Some(s.clone()),
+                    _ => None,
+                });
+                Some(Body::Styled(text.unwrap_or_default(), c.clone()))
+            }
+            Value::Call(f, c) if f == "image" => match c.pos.first() {
+                Some(Value::Str(path)) => Some(Body::Image(path.clone())),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn text(&self) -> &str {
+        match self {
+            Body::Text(t) | Body::Styled(t, _) => t,
+            Body::Image(_) => "",
+        }
+    }
+
+    /// Applies text styling to `style` and returns the label markup.
+    fn read_into(self, style: &mut Style) -> String {
+        let Body::Styled(text, c) = self else {
+            return self.text().to_string();
+        };
+        if let Some(Value::Str(f)) = c.get("font") {
+            style.font = Some(f.clone());
+        }
+        if let Some(Value::Num(n)) = c.get("size") {
+            style.size = (n * 28.3465 * 100.0).round() / 100.0;
+        }
+        style.bold = match c.get("weight") {
+            Some(Value::Str(w)) => w == "bold" || w == "semibold" || w == "extrabold" || w == "black",
+            Some(Value::Num(n)) => *n >= 600.0,
+            _ => false,
+        };
+        style.italic = matches!(c.get("style"), Some(Value::Str(s)) if s == "italic" || s == "oblique");
+        if let Some(Value::Color(col)) = c.get("fill") {
+            style.color = col.clone();
+        }
+        text
     }
 }
 
@@ -578,8 +695,12 @@ fn read_style(call: &Call) -> Style {
         s.radius = *r;
     }
     if let Some(m) = call.get("mark") {
-        s.start_arrow = m.get("start").is_some_and(|v| !matches!(v, Value::None));
-        s.end_arrow = m.get("end").is_some_and(|v| !matches!(v, Value::None));
+        let arrow = |v: Option<&Value>| match v {
+            Some(Value::Str(name)) => arrow_from_mark(name),
+            _ => Arrow::None,
+        };
+        s.start = arrow(m.get("start"));
+        s.end = arrow(m.get("end"));
     }
     s
 }
@@ -617,6 +738,6 @@ mod tests {
         assert_eq!(w.len(), 1);
         assert_eq!(d.get("b").unwrap().label, "$x^2$");
         assert_eq!(d.get("b").unwrap().style.stroke.as_deref(), Some("#ff4136"));
-        assert!(d.elements[2].style.end_arrow);
+        assert_eq!(d.elements[2].style.end, Arrow::Triangle);
     }
 }
