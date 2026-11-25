@@ -43,6 +43,14 @@
   }
 
   function keydown(e: KeyboardEvent) {
+    if (e.key === 'Escape') {
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      app.selection = []
+      app.tool = 'select'
+      app.showCode = false
+      menuOpen = false
+      return
+    }
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
     const mod = e.metaKey || e.ctrlKey
     const k = e.key.toLowerCase()
@@ -69,9 +77,6 @@
       if (!app.selection.length) return
       checkpoint()
       remove(app.selection)
-    } else if (k === 'escape') {
-      app.selection = []
-      app.tool = 'select'
     } else if (k === 'enter' && app.selection.length === 1) app.editing = app.selection[0]
     else if (k.startsWith('arrow') && app.selection.length) nudge(k, e.shiftKey ? 1 : 0.25)
     else if (k === 'i') pickImage()

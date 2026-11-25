@@ -30,7 +30,7 @@
     value={round(value)}
     onchange={(e) => commit(parseFloat((e.target as HTMLInputElement).value))}
     onkeydown={(e) => {
-      e.stopPropagation()
+      if (e.key !== 'Escape') e.stopPropagation()
       if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault()

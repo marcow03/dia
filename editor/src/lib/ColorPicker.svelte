@@ -26,7 +26,7 @@
   }
 </script>
 
-<svelte:window onpointerdown={() => (open = false)} />
+<svelte:window onpointerdown={() => (open = false)} onkeydown={(e) => e.key === 'Escape' && (open = false)} />
 
 <div class="picker" role="presentation" onpointerdown={(e) => e.stopPropagation()}>
   <button class="current" class:none={!value} aria-label="Pick color" onclick={() => (open = !open)}>

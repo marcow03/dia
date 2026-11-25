@@ -36,7 +36,7 @@
     oninput={input}
     onfocus={() => (focused = true)}
     onblur={() => (focused = false)}
-    onkeydown={(e) => e.stopPropagation()}
+    onkeydown={(e) => e.key !== 'Escape' && e.stopPropagation()}
     spellcheck="false"
   ></textarea>
   {#if error}<pre class="error">{error}</pre>{/if}

@@ -20,7 +20,7 @@
   const current = $derived(options.find((o) => o.value === value) ?? options[0])
 </script>
 
-<svelte:window onpointerdown={() => (open = false)} />
+<svelte:window onpointerdown={() => (open = false)} onkeydown={(e) => e.key === 'Escape' && (open = false)} />
 
 <div class="select" role="presentation" onpointerdown={(e) => e.stopPropagation()}>
   <button class="trigger" class:open aria-label={label} aria-haspopup="listbox" onclick={() => (open = !open)}>
