@@ -133,7 +133,7 @@ pub(crate) mod tests {
     #[ignore]
     fn dump_sample() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures");
-        for f in &super::FORMATS[..1] {
+        for f in &super::FORMATS[..2] {
             std::fs::write(format!("{dir}/sample.{}", f.extensions[0]), (f.write)(&sample())).unwrap();
         }
     }

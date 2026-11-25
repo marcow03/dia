@@ -4,3 +4,5 @@ dist/
 editor/src/lib/wasm/
 *.pdf
 tests/fixtures/*.png
+tests/fixtures/*.aux
+tests/fixtures/*.log

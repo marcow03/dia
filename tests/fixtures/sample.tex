@@ -1,0 +1,13 @@
+\documentclass[tikz]{standalone}
+\usetikzlibrary{shapes.geometric, arrows.meta}
+\begin{document}
+\begin{tikzpicture}[line width=1pt]
+  \node[rectangle, draw, fill={rgb,255:red,227;green,242;blue,253}, rounded corners=0.2cm, minimum width=3cm, minimum height=1.5cm, inner sep=0pt, align=center] (n1) at (1.5, -0.75) {Start};
+  \node[ellipse, draw, minimum width=3cm, minimum height=1.5cm, inner sep=0pt, align=center] (n2) at (6.5, -0.75) {$x^2 + y^2$};
+  \node[diamond, aspect=2, draw={rgb,255:red,30;green,136;blue,229}, line width=2pt, minimum width=3cm, minimum height=1.5cm, inner sep=0pt, align=center] (n3) at (6.5, -3.75) {ok?};
+  \node[minimum width=3cm, minimum height=1.5cm, inner sep=0pt, align=center] (t1) at (1.5, -3.75) {note};
+  \draw[-Stealth] (n1) -- (n2) node[midway, fill=white] {$\alpha$};
+  \draw[dashed, Stealth-Stealth] (n2) -- (8.5, -0.75) -- (8.5, -3.75) -- (n3);
+  \draw (0, -6) .. controls (2, -5) and (4, -7) .. (n3);
+\end{tikzpicture}
+\end{document}

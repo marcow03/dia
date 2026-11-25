@@ -14,13 +14,33 @@ pub fn latex_to_typst(s: &str) -> String {
     if !s.contains('\\') && !s.contains('$') {
         return s.to_string();
     }
-    tylax::latex_document_to_typst(s)
+    let typ = tylax::latex_document_to_typst(s)
         .lines()
         .filter(|l| !l.starts_with("#set ") && !l.starts_with("#import "))
         .collect::<Vec<_>>()
-        .join("\n")
-        .trim()
-        .to_string()
+        .join("\n");
+    simplify_attachments(typ.trim())
+}
+
+/// `x^(2)` -> `x^2`: tylax always parenthesizes sub- and superscripts.
+fn simplify_attachments(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(i) = rest.find(['^', '_']) {
+        out.push_str(&rest[..=i]);
+        rest = &rest[i + 1..];
+        if let Some(inner) = rest.strip_prefix('(')
+            && let Some(end) = inner.find(')')
+            && end > 0
+            && inner[..end].chars().all(|c| c.is_alphanumeric())
+            && (inner[..end].chars().all(|c| c.is_ascii_digit()) || inner[..end].chars().count() == 1)
+        {
+            out.push_str(&inner[..end]);
+            rest = &inner[end + 1..];
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// drawio labels are HTML with MathJax math (`\(..\)` inline, `$$..$$` display).
@@ -92,6 +112,7 @@ mod tests {
         assert_eq!(typst_to_latex("$a/b$"), r"$\frac{a}{b}$");
         assert_eq!(latex_to_typst(r"$\frac{a}{b}$"), "$a/b$");
         assert_eq!(latex_to_typst("plain"), "plain");
+        assert_eq!(latex_to_typst(r"$x^2 + a_{ij} + b^{10}$"), "$x^2 + a_(i j) + b^10$");
     }
 
     #[test]
