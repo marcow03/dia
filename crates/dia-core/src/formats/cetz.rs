@@ -32,10 +32,25 @@ pub fn write(d: &Diagram) -> String {
         out.push('\n');
     }
     out.push_str("#cetz.canvas({\n  import cetz.draw: *\n");
+    let mut group: Option<&str> = None;
     for e in &d.elements {
+        if e.group.as_deref() != group {
+            if group.is_some() {
+                out.push_str("  })\n");
+            }
+            if let Some(g) = &e.group {
+                writeln!(out, "  scope({{ // group {g}").unwrap();
+            }
+            group = e.group.as_deref();
+        }
+        let start = out.len();
         let mut args = Vec::new();
+        let rotation = match &e.kind {
+            Kind::Shape { rotate, x, y, w, h, .. } if *rotate != 0.0 => Some((*rotate, pt(x + w / 2.0, y + h / 2.0))),
+            _ => None,
+        };
         let call = match &e.kind {
-            Kind::Shape { shape, x, y, w, h, src } => {
+            Kind::Shape { shape, x, y, w, h, .. } => {
                 let (x2, y2) = (x + w, y + h);
                 match shape {
                     ShapeKind::Rect => {
@@ -108,7 +123,21 @@ pub fn write(d: &Diagram) -> String {
         if !is_text {
             style_args(&e.style, !is_line, &mut args);
         }
-        writeln!(out, "  {call}({})", args.join(", ")).unwrap();
+        match &rotation {
+            Some((r, origin)) => {
+                if is_text {
+                    args.push(format!("angle: {}deg", num(-r)));
+                }
+                writeln!(
+                    out,
+                    "  scope({{\n    rotate({}deg, origin: {origin})\n    {call}({})\n  }})",
+                    num(-r),
+                    args.join(", ")
+                )
+            }
+            None => writeln!(out, "  {call}({})", args.join(", ")),
+        }
+        .unwrap();
         if !e.label.is_empty() && !is_text {
             let at = match e.label_at {
                 Some(LabelAt::Along { t }) => format!("(name: \"{}\", anchor: {}%)", e.id, num(t * 100.0)),
@@ -121,8 +150,18 @@ pub fn write(d: &Diagram) -> String {
             } else {
                 ""
             };
-            writeln!(out, "  content({at}, {}{frame})", label_body(&e.label, &e.style)).unwrap();
+            let angle = rotation
+                .as_ref()
+                .map_or(String::new(), |(r, _)| format!(", angle: {}deg", num(-r)));
+            writeln!(out, "  content({at}, {}{frame}{angle})", label_body(&e.label, &e.style)).unwrap();
         }
+        if group.is_some() {
+            let chunk = out.split_off(start);
+            out.extend(chunk.lines().map(|l| format!("  {l}\n")));
+        }
+    }
+    if group.is_some() {
+        out.push_str("  })\n");
     }
     out.push_str("})\n");
     out
@@ -137,7 +176,12 @@ fn end(d: &Diagram, e: &End, toward: Point) -> String {
         End::Point(p) => pt(p.x, p.y),
         End::Node { node } => {
             let c = d.center(e);
-            let deg = (-(toward.y - c.y)).atan2(toward.x - c.x).to_degrees();
+            let rotate = match d.get(node).map(|n| &n.kind) {
+                Some(Kind::Shape { rotate, .. }) => *rotate,
+                _ => 0.0,
+            };
+            // Anchor angles are measured in the shape's own (rotated) frame.
+            let deg = (-(toward.y - c.y)).atan2(toward.x - c.x).to_degrees() + rotate;
             format!("(name: \"{node}\", anchor: {}deg)", num(deg))
         }
     }
@@ -297,7 +341,14 @@ pub fn read(src: &str, warnings: &mut Warnings) -> Result<Diagram> {
     }
     let mut d = Diagram::default();
     let mut labels = Vec::new();
-    walk(&root, &mut d, &mut labels, &mut HashMap::new(), warnings);
+    walk(
+        &root,
+        &mut d,
+        &mut labels,
+        &mut HashMap::new(),
+        &mut Ctx::default(),
+        warnings,
+    );
     for (id, body, at) in labels {
         match d.elements.iter_mut().find(|e| e.id == id) {
             Some(e) => {
@@ -326,11 +377,19 @@ const UNSUPPORTED_FNS: &[&str] = &[
 /// String variables (`#let x = "..."`) by name, used for image paths.
 type Vars = HashMap<String, String>;
 
+/// Scope state while walking: the enclosing group and the active `rotate` (degrees, origin).
+#[derive(Clone, Default)]
+struct Ctx {
+    group: Option<String>,
+    rotate: Option<(f64, Point)>,
+}
+
 fn walk(
     node: &typst_syntax::SyntaxNode,
     d: &mut Diagram,
     labels: &mut Vec<(String, Body, Option<LabelAt>)>,
     vars: &mut Vars,
+    ctx: &mut Ctx,
     w: &mut Warnings,
 ) {
     if let Some(binding) = node.cast::<ast::LetBinding>()
@@ -345,7 +404,36 @@ fn walk(
     {
         let name = id.get().as_str();
         if DRAW_FNS.contains(&name) {
+            let first = d.elements.len();
             element(name, call_args(call.args()), d, labels, vars, w);
+            for e in &mut d.elements[first..] {
+                apply_ctx(e, ctx);
+            }
+            return;
+        }
+        if name == "scope" || name == "group" {
+            let mut inner = ctx.clone();
+            if let Some(Value::Str(g)) = call_args(call.args()).get("name") {
+                inner.group = Some(g.clone());
+            } else if let Some(g) = group_comment(node) {
+                inner.group = Some(g);
+            }
+            for child in node.children() {
+                walk(child, d, labels, vars, &mut inner, w);
+            }
+            return;
+        }
+        if name == "rotate" {
+            let args = call_args(call.args());
+            let angle = args.pos.first().or(args.get("z"));
+            let origin = match args.get("origin").and_then(coord) {
+                Some(Coord::P(p)) => p,
+                _ => Point::default(),
+            };
+            match angle {
+                Some(Value::Angle(a)) => ctx.rotate = Some((*a, origin)),
+                _ => w.push("rotate without a z angle skipped".into()),
+            }
             return;
         }
         if UNSUPPORTED_FNS.contains(&name) {
@@ -354,7 +442,57 @@ fn walk(
         }
     }
     for child in node.children() {
-        walk(child, d, labels, vars, w);
+        walk(child, d, labels, vars, ctx, w);
+    }
+}
+
+/// The `// group <id>` comment that marks a `scope` written for a group.
+fn group_comment(node: &typst_syntax::SyntaxNode) -> Option<String> {
+    use typst_syntax::SyntaxKind;
+    for child in node.children() {
+        match child.kind() {
+            SyntaxKind::LineComment => {
+                if let Some(g) = child.text().strip_prefix("// group ") {
+                    return Some(g.trim().to_string());
+                }
+            }
+            SyntaxKind::Args | SyntaxKind::Closure | SyntaxKind::CodeBlock | SyntaxKind::Code => {
+                if let Some(g) = group_comment(child) {
+                    return Some(g);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Assigns the enclosing group and bakes the active rotation into the element.
+fn apply_ctx(e: &mut Element, ctx: &Ctx) {
+    e.group = ctx.group.clone();
+    let Some((deg, o)) = ctx.rotate else { return };
+    let (sin, cos) = deg.to_radians().sin_cos();
+    // Counterclockwise on screen, in y-down coordinates.
+    let turn = |p: Point| {
+        let (dx, dy) = (p.x - o.x, p.y - o.y);
+        Point::new(o.x + dx * cos + dy * sin, o.y - dx * sin + dy * cos)
+    };
+    match &mut e.kind {
+        Kind::Shape { x, y, w, h, rotate, .. } => {
+            let c = turn(Point::new(*x + *w / 2.0, *y + *h / 2.0));
+            (*x, *y) = (c.x - *w / 2.0, c.y - *h / 2.0);
+            *rotate = ((*rotate - deg) * 1000.0).round() / 1000.0;
+        }
+        Kind::Line { from, to, via, .. } => {
+            for end in [from, to] {
+                if let End::Point(p) = end {
+                    *p = turn(*p);
+                }
+            }
+            for p in via {
+                *p = turn(*p);
+            }
+        }
     }
 }
 
@@ -574,6 +712,7 @@ fn element(
                     kind,
                     style,
                     label,
+                    group: None,
                     label_at: None,
                 });
             };
@@ -651,6 +790,7 @@ fn element(
         kind,
         style,
         label: String::new(),
+        group: None,
         label_at: None,
     });
 }
@@ -663,6 +803,7 @@ fn shape(shape: ShapeKind, a: Point, b: Point) -> Kind {
         w: (a.x - b.x).abs(),
         h: (a.y - b.y).abs(),
         src: String::new(),
+        rotate: 0.0,
     }
 }
 

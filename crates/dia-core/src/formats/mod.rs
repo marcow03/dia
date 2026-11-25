@@ -42,9 +42,11 @@ pub(crate) mod tests {
                 w: 3.0,
                 h: 1.5,
                 src: String::new(),
+                rotate: 0.0,
             },
             style,
             label: label.into(),
+            group: None,
             label_at: None,
         };
         let node = |n: &str| End::Node { node: n.into() };
@@ -109,12 +111,14 @@ pub(crate) mod tests {
                         w: 2.0,
                         h: 1.0,
                         src: "logo.png".into(),
+                        rotate: 0.0,
                     },
                     style: Style {
                         stroke: None,
                         ..Style::default()
                     },
                     label: String::new(),
+                    group: None,
                     label_at: None,
                 },
                 Element {
@@ -130,6 +134,7 @@ pub(crate) mod tests {
                         ..Style::default()
                     },
                     label: "$alpha$".into(),
+                    group: None,
                     label_at: Some(LabelAt::Along { t: 0.3 }),
                 },
                 Element {
@@ -147,6 +152,7 @@ pub(crate) mod tests {
                         ..Style::default()
                     },
                     label: String::new(),
+                    group: None,
                     label_at: None,
                 },
                 Element {
@@ -163,11 +169,17 @@ pub(crate) mod tests {
                         ..Style::default()
                     },
                     label: String::new(),
+                    group: None,
                     label_at: None,
                 },
             ],
         };
         d.elements[0].label_at = Some(LabelAt::Offset { dx: 0.5, dy: -0.25 });
+        d.elements[0].group = Some("g1".into());
+        d.elements[1].group = Some("g1".into());
+        if let Kind::Shape { rotate, .. } = &mut d.elements[2].kind {
+            *rotate = 20.0;
+        }
         d
     }
 

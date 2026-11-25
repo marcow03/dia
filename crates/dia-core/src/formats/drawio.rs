@@ -5,7 +5,7 @@ use crate::{Error, Result, Warnings};
 use base64::Engine;
 use quick_xml::escape::escape;
 use quick_xml::events::{BytesStart, Event};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::io::Read;
 
@@ -25,13 +25,42 @@ pub fn write(d: &Diagram) -> String {
         "<mxfile host=\"dia\">\n  <diagram id=\"dia\" name=\"Page-1\">\n    <mxGraphModel grid=\"1\" gridSize=\"10\" math=\"{}\">\n      <root>\n        <mxCell id=\"0\"/>\n        <mxCell id=\"1\" parent=\"0\"/>\n",
         math as u8
     );
+    let groups = group_bounds(d);
+    let mut opened = HashSet::new();
     for e in &d.elements {
+        // Group members live in a group cell and use coordinates relative to it.
+        let (parent, ox, oy) = match e.group.as_deref().and_then(|g| groups.get(g).map(|b| (g, b))) {
+            Some((g, &[x0, y0, x1, y1])) => {
+                if opened.insert(g) {
+                    writeln!(
+                        out,
+                        "        <mxCell id=\"{}\" value=\"\" style=\"group\" vertex=\"1\" connectable=\"0\" parent=\"1\">\n          <mxGeometry x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" as=\"geometry\"/>\n        </mxCell>",
+                        escape(g),
+                        num(x0 * PX),
+                        num(y0 * PX),
+                        num((x1 - x0) * PX),
+                        num((y1 - y0) * PX)
+                    )
+                    .unwrap();
+                }
+                (escape(g).to_string(), x0, y0)
+            }
+            None => ("1".to_string(), 0.0, 0.0),
+        };
         let value = escape(typst_to_drawio(&e.label)).to_string();
         let id = escape(e.id.as_str()).to_string();
         let s = &e.style;
         let mut style = Vec::new();
         match &e.kind {
-            Kind::Shape { shape, x, y, w, h, src } => {
+            Kind::Shape {
+                shape,
+                x,
+                y,
+                w,
+                h,
+                src,
+                rotate,
+            } => {
                 match shape {
                     ShapeKind::Rect => style.push("rounded=0".to_string()),
                     ShapeKind::Ellipse => style.push("ellipse".into()),
@@ -53,13 +82,16 @@ pub fn write(d: &Diagram) -> String {
                     style.push(format!("spacing{}={h}", if dx < 0.0 { "Right" } else { "Left" }));
                     style.push(format!("spacing{}={v}", if dy < 0.0 { "Bottom" } else { "Top" }));
                 }
+                if *rotate != 0.0 {
+                    style.push(format!("rotation={}", num(*rotate)));
+                }
                 style_attrs(s, &mut style);
                 writeln!(
                     out,
-                    "        <mxCell id=\"{id}\" value=\"{value}\" style=\"{};\" vertex=\"1\" parent=\"1\">\n          <mxGeometry x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" as=\"geometry\"/>\n        </mxCell>",
+                    "        <mxCell id=\"{id}\" value=\"{value}\" style=\"{};\" vertex=\"1\" parent=\"{parent}\">\n          <mxGeometry x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" as=\"geometry\"/>\n        </mxCell>",
                     style.join(";"),
-                    num(x * PX),
-                    num(y * PX),
+                    num((x - ox) * PX),
+                    num((y - oy) * PX),
                     num(w * PX),
                     num(h * PX)
                 )
@@ -84,8 +116,8 @@ pub fn write(d: &Diagram) -> String {
                         End::Point(p) => write!(
                             points,
                             "\n            <mxPoint x=\"{}\" y=\"{}\" as=\"{as_}\"/>",
-                            num(p.x * PX),
-                            num(p.y * PX)
+                            num((p.x - ox) * PX),
+                            num((p.y - oy) * PX)
                         )
                         .unwrap(),
                     }
@@ -96,8 +128,8 @@ pub fn write(d: &Diagram) -> String {
                         write!(
                             points,
                             "\n              <mxPoint x=\"{}\" y=\"{}\"/>",
-                            num(p.x * PX),
-                            num(p.y * PX)
+                            num((p.x - ox) * PX),
+                            num((p.y - oy) * PX)
                         )
                         .unwrap();
                     }
@@ -109,7 +141,7 @@ pub fn write(d: &Diagram) -> String {
                 };
                 writeln!(
                     out,
-                    "        <mxCell id=\"{id}\" value=\"{value}\" style=\"{};\" edge=\"1\" parent=\"1\"{attrs}>\n          <mxGeometry{label_x} relative=\"1\" as=\"geometry\">{points}\n          </mxGeometry>\n        </mxCell>",
+                    "        <mxCell id=\"{id}\" value=\"{value}\" style=\"{};\" edge=\"1\" parent=\"{parent}\"{attrs}>\n          <mxGeometry{label_x} relative=\"1\" as=\"geometry\">{points}\n          </mxGeometry>\n        </mxCell>",
                     style.join(";")
                 )
                 .unwrap();
@@ -117,6 +149,31 @@ pub fn write(d: &Diagram) -> String {
         }
     }
     out.push_str("      </root>\n    </mxGraphModel>\n  </diagram>\n</mxfile>\n");
+    out
+}
+
+/// Bounding box `[x0, y0, x1, y1]` of each group's shapes and free line points.
+fn group_bounds(d: &Diagram) -> HashMap<&str, [f64; 4]> {
+    let mut out: HashMap<&str, [f64; 4]> = HashMap::new();
+    for e in &d.elements {
+        let Some(g) = e.group.as_deref() else { continue };
+        let mut pts = vec![];
+        match &e.kind {
+            Kind::Shape { x, y, w, h, .. } => pts.extend([Point::new(*x, *y), Point::new(x + w, y + h)]),
+            Kind::Line { from, to, via, .. } => {
+                pts.extend(via);
+                for end in [from, to] {
+                    if let End::Point(p) = end {
+                        pts.push(*p);
+                    }
+                }
+            }
+        }
+        for p in pts {
+            let b = out.entry(g).or_insert([p.x, p.y, p.x, p.y]);
+            *b = [b[0].min(p.x), b[1].min(p.y), b[2].max(p.x), b[3].max(p.y)];
+        }
+    }
     out
 }
 
@@ -242,6 +299,13 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
             },
             ..Style::default()
         };
+        let group = by_id
+            .get(c.parent.as_str())
+            .filter(|p| is_group(p))
+            .map(|p| p.id.clone());
+        if c.vertex && is_group(c) {
+            continue;
+        }
         if c.vertex {
             let bare = st.iter().find(|(_, v)| v.is_empty()).map(|(k, _)| k.as_str());
             let shape = match get("shape").or(bare) {
@@ -289,9 +353,11 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
                     w: cw / PX,
                     h: ch / PX,
                     src,
+                    rotate: get("rotation").and_then(|v| v.parse().ok()).unwrap_or(0.0),
                 },
                 style,
                 label,
+                group: group.clone(),
                 label_at: {
                     let sp = |k: &str| get(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
                     let dx = (sp("spacingLeft") - sp("spacingRight")) / 2.0 / PX;
@@ -321,11 +387,16 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
                 },
                 style,
                 label,
+                group,
                 label_at: along(c.rect[0]),
             });
         }
     }
     Ok(d)
+}
+
+fn is_group(c: &Cell) -> bool {
+    c.style.split(';').next() == Some("group")
 }
 
 /// Edge label position from drawio's relative geometry x (-1 = source, 1 = target).

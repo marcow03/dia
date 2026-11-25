@@ -19,6 +19,13 @@ pub struct Element {
     /// Label placement; `None` centers it (shapes) or puts it at the middle (lines).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label_at: Option<LabelAt>,
+    /// Elements sharing a group id are selected, moved and exported together.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -42,6 +49,9 @@ pub enum Kind {
         /// Image path or data URL, only for `ShapeKind::Image`.
         #[serde(default, skip_serializing_if = "String::is_empty")]
         src: String,
+        /// Clockwise rotation around the center, in degrees.
+        #[serde(default, skip_serializing_if = "is_zero")]
+        rotate: f64,
     },
     Line {
         from: End,

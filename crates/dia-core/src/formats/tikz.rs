@@ -16,10 +16,29 @@ pub fn write(d: &Diagram) -> String {
     let mut out = String::from(
         "\\documentclass[tikz]{standalone}\n\\usetikzlibrary{shapes.geometric, arrows.meta}\n\\begin{document}\n\\begin{tikzpicture}[line width=1pt, font=\\fontsize{14}{17}\\selectfont]\n",
     );
+    let mut group: Option<&str> = None;
     for e in &d.elements {
+        if e.group.as_deref() != group {
+            if group.is_some() {
+                out.push_str("  \\end{scope}\n");
+            }
+            if let Some(g) = &e.group {
+                writeln!(out, "  \\begin{{scope}}[local bounding box={g}]").unwrap();
+            }
+            group = e.group.as_deref();
+        }
+        let start = out.len();
         let label = typst_to_latex(&e.label);
         match &e.kind {
-            Kind::Shape { shape, x, y, w, h, src } => {
+            Kind::Shape {
+                shape,
+                x,
+                y,
+                w,
+                h,
+                src,
+                rotate,
+            } => {
                 let mut opts = Vec::new();
                 let mut label = label;
                 match shape {
@@ -38,6 +57,9 @@ pub fn write(d: &Diagram) -> String {
                 }
                 if !matches!(shape, ShapeKind::Text | ShapeKind::Image) {
                     style_opts(&e.style, true, &mut opts);
+                }
+                if *rotate != 0.0 {
+                    opts.push(format!("rotate={}", num(-rotate)));
                 }
                 if let (Some(LabelAt::Offset { dx, dy }), false) = (e.label_at, label.is_empty()) {
                     let mut label_opts = vec![format!("shift={{({}, {})}}", num(dx), num(-dy))];
@@ -91,6 +113,13 @@ pub fn write(d: &Diagram) -> String {
                 writeln!(out, "  \\draw{opts} {path};").unwrap();
             }
         }
+        if group.is_some() {
+            let chunk = out.split_off(start);
+            out.extend(chunk.lines().map(|l| format!("  {l}\n")));
+        }
+    }
+    if group.is_some() {
+        out.push_str("  \\end{scope}\n");
     }
     out.push_str("\\end{tikzpicture}\n\\end{document}\n");
     out
@@ -251,6 +280,9 @@ struct Reader<'a> {
     w: &'a mut Warnings,
     colors: HashMap<String, String>,
     coords: HashMap<String, Point>,
+    /// Group of the innermost open `scope`, and the groups of the enclosing ones.
+    group: Option<String>,
+    scopes: Vec<Option<String>>,
 }
 
 pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
@@ -260,6 +292,8 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
         w,
         colors: HashMap::new(),
         coords: HashMap::new(),
+        group: None,
+        scopes: vec![],
     };
     r.define_colors(&src);
     let body = match src.find("\\begin{tikzpicture}") {
@@ -504,6 +538,30 @@ impl Reader<'_> {
     }
 
     fn statement(&mut self, stmt: &str) {
+        let mut stmt = stmt.trim();
+        loop {
+            if let Some(rest) = stmt.strip_prefix("\\begin{scope}") {
+                let rest = rest.trim_start();
+                let (opts, rest) = if rest.starts_with('[') {
+                    let e = group_end(rest, '[', ']');
+                    (parse_opts(&rest[1..e - 1]), &rest[e..])
+                } else {
+                    (vec![], rest)
+                };
+                let name = opts
+                    .into_iter()
+                    .find(|(k, _)| k == "local bounding box")
+                    .map(|(_, v)| v);
+                self.scopes.push(self.group.take());
+                self.group = Some(name.unwrap_or_else(|| format!("g{}", self.scopes.len() + self.d.elements.len())));
+                stmt = rest.trim();
+            } else if let Some(rest) = stmt.strip_prefix("\\end{scope}") {
+                self.group = self.scopes.pop().flatten();
+                stmt = rest.trim();
+            } else {
+                break;
+            }
+        }
         if stmt.is_empty() {
             return;
         }
@@ -682,10 +740,12 @@ impl Reader<'_> {
                 w,
                 h,
                 src,
+                rotate: get("rotate").and_then(|v| v.parse::<f64>().ok()).map_or(0.0, |r| -r),
             },
             style,
             label,
             label_at,
+            group: self.group.clone(),
         });
         id
     }
@@ -938,9 +998,11 @@ impl Reader<'_> {
                 w: (a.x - b.x).abs(),
                 h: (a.y - b.y).abs(),
                 src: String::new(),
+                rotate: 0.0,
             },
             style: style.clone(),
             label: String::new(),
+            group: self.group.clone(),
             label_at: None,
         });
     }
@@ -983,6 +1045,7 @@ impl Reader<'_> {
             kind: Kind::Line { from, to, via, curved },
             style,
             label: std::mem::take(label),
+            group: self.group.clone(),
             label_at: label_at.take(),
         });
     }
