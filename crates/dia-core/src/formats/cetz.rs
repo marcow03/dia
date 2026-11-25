@@ -1,6 +1,7 @@
 use super::Format;
 use crate::ir::*;
 use crate::{Error, Result, Warnings};
+use std::collections::HashMap;
 use std::fmt::Write;
 use typst_syntax::ast::{self, AstNode, Expr};
 
@@ -14,9 +15,22 @@ pub const FORMAT: Format = Format {
 pub const CETZ_VERSION: &str = "0.5.3";
 
 pub fn write(d: &Diagram) -> String {
-    let mut out = format!(
-        "#import \"@preview/cetz:{CETZ_VERSION}\"\n#set page(width: auto, height: auto, margin: 0.5cm)\n\n#cetz.canvas({{\n  import cetz.draw: *\n"
-    );
+    let mut out =
+        format!("#import \"@preview/cetz:{CETZ_VERSION}\"\n#set page(width: auto, height: auto, margin: 0.5cm)\n\n");
+    for e in &d.elements {
+        if let Kind::Shape {
+            shape: ShapeKind::Image,
+            src,
+            ..
+        } = &e.kind
+        {
+            writeln!(out, "#let {} = \"{}\"", image_var(&e.id), image_path(&e.id, src)).unwrap();
+        }
+    }
+    if !out.ends_with("\n\n") {
+        out.push('\n');
+    }
+    out.push_str("#cetz.canvas({\n  import cetz.draw: *\n");
     for e in &d.elements {
         let mut args = Vec::new();
         let call = match &e.kind {
@@ -53,8 +67,8 @@ pub fn write(d: &Diagram) -> String {
                         args.push(pt(*x, *y));
                         args.push(pt(x2, y2));
                         args.push(format!(
-                            "image(\"{}\", width: {}cm, height: {}cm, fit: \"stretch\")",
-                            image_path(&e.id, src),
+                            "image({}, width: {}cm, height: {}cm, fit: \"stretch\")",
+                            image_var(&e.id),
                             num(*w),
                             num(*h)
                         ));
@@ -169,6 +183,11 @@ fn color(hex: &str) -> String {
     format!("rgb(\"{hex}\")")
 }
 
+fn image_var(id: &str) -> String {
+    let id: String = id.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
+    format!("image-{id}")
+}
+
 fn mark_name(a: Arrow) -> Option<&'static str> {
     Some(match a {
         Arrow::None => return None,
@@ -228,6 +247,7 @@ enum Value {
     Array(Vec<Value>),
     Dict(Vec<(String, Value)>),
     Content(String),
+    Ident(String),
     Call(String, Call),
     Other,
 }
@@ -274,7 +294,7 @@ pub fn read(src: &str, warnings: &mut Warnings) -> Result<Diagram> {
     }
     let mut d = Diagram::default();
     let mut labels = Vec::new();
-    walk(&root, &mut d, &mut labels, warnings);
+    walk(&root, &mut d, &mut labels, &mut HashMap::new(), warnings);
     for (target, body) in labels {
         let id = target.split('.').next().unwrap_or_default();
         match d.elements.iter_mut().find(|e| e.id == id) {
@@ -298,13 +318,29 @@ const UNSUPPORTED_FNS: &[&str] = &[
     "n-star",
 ];
 
-fn walk(node: &typst_syntax::SyntaxNode, d: &mut Diagram, labels: &mut Vec<(String, Body)>, w: &mut Warnings) {
+/// String variables (`#let x = "..."`) by name, used for image paths.
+type Vars = HashMap<String, String>;
+
+fn walk(
+    node: &typst_syntax::SyntaxNode,
+    d: &mut Diagram,
+    labels: &mut Vec<(String, Body)>,
+    vars: &mut Vars,
+    w: &mut Warnings,
+) {
+    if let Some(binding) = node.cast::<ast::LetBinding>()
+        && let ast::LetBindingKind::Normal(ast::Pattern::Normal(Expr::Ident(name))) = binding.kind()
+        && let Some(Expr::Str(value)) = binding.init()
+    {
+        vars.insert(name.get().to_string(), value.get().to_string());
+        return;
+    }
     if let Some(call) = node.cast::<ast::FuncCall>()
         && let Expr::Ident(id) = call.callee()
     {
         let name = id.get().as_str();
         if DRAW_FNS.contains(&name) {
-            element(name, call_args(call.args()), d, labels, w);
+            element(name, call_args(call.args()), d, labels, vars, w);
             return;
         }
         if UNSUPPORTED_FNS.contains(&name) {
@@ -313,7 +349,7 @@ fn walk(node: &typst_syntax::SyntaxNode, d: &mut Diagram, labels: &mut Vec<(Stri
         }
     }
     for child in node.children() {
-        walk(child, d, labels, w);
+        walk(child, d, labels, vars, w);
     }
 }
 
@@ -372,7 +408,7 @@ fn value(e: Expr) -> Value {
         Expr::ContentBlock(c) => Value::Content(c.body().to_untyped().clone().into_text().trim().to_string()),
         Expr::Ident(i) => named_color(i.get())
             .map(|c| Value::Color(c.into()))
-            .unwrap_or(Value::Other),
+            .unwrap_or_else(|| Value::Ident(i.get().to_string())),
         Expr::Unary(u) if u.op() == ast::UnOp::Neg => match value(u.expr()) {
             Value::Num(n) => Value::Num(-n),
             Value::Angle(n) => Value::Angle(-n),
@@ -475,7 +511,7 @@ fn to_end(c: Coord) -> End {
     }
 }
 
-fn element(f: &str, call: Call, d: &mut Diagram, labels: &mut Vec<(String, Body)>, w: &mut Warnings) {
+fn element(f: &str, call: Call, d: &mut Diagram, labels: &mut Vec<(String, Body)>, vars: &Vars, w: &mut Warnings) {
     let coords: Vec<Coord> = call.pos.iter().filter_map(coord).collect();
     let mut style = read_style(&call);
     let id = call.name();
@@ -507,7 +543,7 @@ fn element(f: &str, call: Call, d: &mut Diagram, labels: &mut Vec<(String, Body)
             let body = call
                 .pos
                 .iter()
-                .find_map(Body::from_value)
+                .find_map(|v| Body::from_value(v, vars))
                 .unwrap_or(Body::Text(String::new()));
             let text_shape = |kind: ShapeKind, a: Point, b: Point, d: &mut Diagram, body: Body| {
                 let mut style = Style {
@@ -613,7 +649,7 @@ enum Body {
 }
 
 impl Body {
-    fn from_value(v: &Value) -> Option<Body> {
+    fn from_value(v: &Value, vars: &Vars) -> Option<Body> {
         match v {
             Value::Content(s) => Some(Body::Text(s.clone())),
             Value::Call(f, c) if f == "text" => {
@@ -625,6 +661,7 @@ impl Body {
             }
             Value::Call(f, c) if f == "image" => match c.pos.first() {
                 Some(Value::Str(path)) => Some(Body::Image(path.clone())),
+                Some(Value::Ident(var)) => vars.get(var).map(|path| Body::Image(path.clone())),
                 _ => None,
             },
             _ => None,
