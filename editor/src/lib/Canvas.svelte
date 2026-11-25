@@ -1,9 +1,9 @@
 <script lang="ts">
   import ElementView from './ElementView.svelte'
-  import { bounds, center, find, labelPoint, lineProject, linePoints, PX_PER_CM, shapeAt, snap } from './geometry'
+  import { bounds, center, find, labelPoint, lineProject, linePoints, PX_PER_CM, rotatePoint, shapeAt, snap } from './geometry'
   import { openFiles, readImage } from './files'
   import LabelEditor from './LabelEditor.svelte'
-  import { addLine, addShape, app, checkpoint, remove, zoomBy } from './state.svelte'
+  import { addLine, addShape, app, checkpoint, expandGroups, remove, rotateElements, zoomBy } from './state.svelte'
   import { isNode, type Element, type End, type Point, type Shape } from './types'
 
   type Drag =
@@ -16,6 +16,7 @@
     | { kind: 'label'; id: string }
     | { kind: 'add'; id: string; index: number; start: Point }
     | { kind: 'marquee'; start: Point; now: Point; additive: string[] }
+    | { kind: 'rotate'; pivot: Point; start: number; orig: Element[] }
 
   let svg: SVGSVGElement
   let drag = $state<Drag | null>(null)
@@ -30,6 +31,25 @@
   const d = $derived(app.diagram)
   const selected = $derived(app.selection.map((id) => find(d, id)).filter((e) => e !== undefined))
   const handle = $derived(8 / scale)
+  const single = $derived(selected.length === 1 && selected[0].type === 'shape' ? selected[0] : null)
+  /** Bounding box of the whole selection. */
+  const selBox = $derived.by(() => {
+    if (!selected.length) return null
+    const bs = selected.map((e) => bounds(d, e))
+    const x = Math.min(...bs.map((b) => b.x))
+    const y = Math.min(...bs.map((b) => b.y))
+    return { x, y, w: Math.max(...bs.map((b) => b.x + b.w)) - x, h: Math.max(...bs.map((b) => b.y + b.h)) - y }
+  })
+  const groupBoxes = $derived.by(() => {
+    const groups = [...new Set(selected.map((e) => e.group).filter((g) => g))]
+    return groups.map((g) => {
+      const bs = d.elements.filter((e) => e.group === g).map((e) => bounds(d, e))
+      const x = Math.min(...bs.map((b) => b.x)) - 0.15
+      const y = Math.min(...bs.map((b) => b.y)) - 0.15
+      return { x, y, w: Math.max(...bs.map((b) => b.x + b.w)) + 0.15 - x, h: Math.max(...bs.map((b) => b.y + b.h)) + 0.15 - y }
+    })
+  })
+  const angleOf = (p: Point, c: Point) => (Math.atan2(p.y - c.y, p.x - c.x) * 180) / Math.PI
 
   function world(ev: { clientX: number; clientY: number }): Point {
     const r = svg.getBoundingClientRect()
@@ -92,13 +112,20 @@
       else if (kind === 'via') drag = { kind: 'via', id: hid, index: +arg }
       else if (kind === 'label') drag = { kind: 'label', id: hid }
       else if (kind === 'add') drag = { kind: 'add', id: hid, index: +arg, start: p }
+      else if (kind === 'rotate') {
+        const pivot = single ? center(single) : { x: selBox!.x + selBox!.w / 2, y: selBox!.y + selBox!.h / 2 }
+        drag = { kind: 'rotate', pivot, start: angleOf(p, pivot), orig: $state.snapshot(selected) as Element[] }
+      }
       return
     }
     if (id) {
+      const ids = expandGroups([id])
       if (ev.shiftKey) {
-        app.selection = app.selection.includes(id) ? app.selection.filter((s) => s !== id) : [...app.selection, id]
+        app.selection = app.selection.includes(id)
+          ? app.selection.filter((s) => !ids.includes(s))
+          : [...new Set([...app.selection, ...ids])]
       } else if (!app.selection.includes(id)) {
-        app.selection = [id]
+        app.selection = ids
       }
       checkpoint()
       drag = { kind: 'move', start: p, orig: $state.snapshot(selected) as Element[] }
@@ -142,6 +169,16 @@
         const q = snapP(p)
         const fx = drag.corner.includes('w') ? o.x + o.w : o.x
         const fy = drag.corner.includes('n') ? o.y + o.h : o.y
+        if (o.rotate) {
+          // Resize in the shape's own frame, then move the new center back into place.
+          const c0 = center(o)
+          sizeTo(el, fx, fy, rotatePoint(p, c0, -o.rotate))
+          const c = rotatePoint(center(el), c0, o.rotate)
+          el.x = c.x - el.w / 2
+          el.y = c.y - el.h / 2
+          sizeMarks = []
+          break
+        }
         if (el.shape !== 'image') {
           sizeTo(el, fx, fy, p)
           break
@@ -184,8 +221,9 @@
         }
         const c = center(el)
         const tol = 6 / scale
-        let dx = Math.max(-el.w / 2, Math.min(el.w / 2, p.x - c.x))
-        let dy = Math.max(-el.h / 2, Math.min(el.h / 2, p.y - c.y))
+        const lp = rotatePoint(p, c, -(el.rotate ?? 0))
+        let dx = Math.max(-el.w / 2, Math.min(el.w / 2, lp.x - c.x))
+        let dy = Math.max(-el.h / 2, Math.min(el.h / 2, lp.y - c.y))
         if (Math.abs(dx) < tol) {
           dx = 0
           guides.push({ x1: c.x, y1: el.y, x2: c.x, y2: el.y + el.h })
@@ -212,7 +250,15 @@
             return b.x >= r.x && b.y >= r.y && b.x + b.w <= r.x + r.w && b.y + b.h <= r.y + r.h
           })
           .map((e) => e.id)
-        app.selection = [...new Set([...drag.additive, ...inside])]
+        app.selection = expandGroups([...new Set([...drag.additive, ...inside])])
+        break
+      }
+      case 'rotate': {
+        let a = angleOf(p, drag.pivot) - drag.start
+        const snapped = Math.round(a / 15) * 15
+        if (ev.shiftKey || Math.abs(a - snapped) < 3) a = snapped
+        rotateElements(drag.orig, a, drag.pivot)
+        break
       }
     }
   }
@@ -399,12 +445,38 @@
     {#if hover}
       {@const h = find(d, hover)}
       {#if h?.type === 'shape'}
-        <rect class="hover" x={h.x} y={h.y} width={h.w} height={h.h} rx={0.1} stroke-width={3 / scale} />
+        {@const c = center(h)}
+        <rect
+          class="hover"
+          transform={h.rotate ? `rotate(${h.rotate} ${c.x} ${c.y})` : undefined}
+          x={h.x}
+          y={h.y}
+          width={h.w}
+          height={h.h}
+          rx={0.1}
+          stroke-width={3 / scale}
+        />
       {/if}
+    {/if}
+
+    {#each groupBoxes as b}
+      <rect class="group" x={b.x} y={b.y} width={b.w} height={b.h} rx={0.1} stroke-width={1 / scale} stroke-dasharray="{4 / scale} {3 / scale}" />
+    {/each}
+
+    {#if selBox && !app.editing && !drag && selected.some((e) => e.type === 'shape')}
+      {@const r = single ?? selBox}
+      {@const c = { x: r.x + r.w / 2, y: r.y + r.h / 2 }}
+      {@const top = r.y - 22 / scale}
+      <g transform={single?.rotate ? `rotate(${single.rotate} ${c.x} ${c.y})` : undefined}>
+        <line class="stem" x1={c.x} y1={r.y} x2={c.x} y2={top} stroke-width={1 / scale} />
+        <circle class="handle rotate" data-handle="rotate:{selected[0].id}" cx={c.x} cy={top} r={handle / 1.6} stroke-width={1.5 / scale} />
+      </g>
     {/if}
 
     {#each selected as el (el.id)}
       {#if el.type === 'shape'}
+        {@const c = center(el)}
+        <g transform={el.rotate ? `rotate(${el.rotate} ${c.x} ${c.y})` : undefined}>
         <rect class="sel" x={el.x} y={el.y} width={el.w} height={el.h} stroke-width={1.5 / scale} />
         {#if selected.length === 1 && !app.editing}
           {#each [['nw', el.x, el.y], ['ne', el.x + el.w, el.y], ['sw', el.x, el.y + el.h], ['se', el.x + el.w, el.y + el.h]] as [c, x, y]}
@@ -421,6 +493,7 @@
             />
           {/each}
         {/if}
+        </g>
       {:else}
         {@const pts = linePoints(d, el)}
         {#if selected.length === 1 && !app.editing}
@@ -505,6 +578,18 @@
   .handle {
     fill: white;
     stroke: var(--accent);
+  }
+  .group {
+    fill: none;
+    stroke: var(--accent);
+    pointer-events: none;
+  }
+  .stem {
+    stroke: var(--accent);
+    pointer-events: none;
+  }
+  .rotate {
+    cursor: grab;
   }
   .add {
     fill: var(--accent);

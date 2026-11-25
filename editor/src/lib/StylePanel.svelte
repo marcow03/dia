@@ -5,7 +5,7 @@
   import Icon from './Icon.svelte'
   import NumberInput from './NumberInput.svelte'
   import Select from './Select.svelte'
-  import { app, checkpoint, type DrawTool } from './state.svelte'
+  import { app, checkpoint, groupSelection, ungroupSelection, type DrawTool } from './state.svelte'
   import { arrows, fonts, type Arrow, type Element, type Style } from './types'
 
   type Kind = 'rect' | 'shape' | 'text' | 'image' | 'line'
@@ -40,6 +40,15 @@
   const lines = $derived(targets.flatMap((t) => (t.el?.type === 'line' ? [t.el] : [])))
   const shapeCount = $derived(targets.filter((t) => t.kind !== 'line').length)
   const moved = $derived(targets.some((t) => t.el?.label_at))
+  const shapes = $derived(targets.flatMap((t) => (t.el?.type === 'shape' ? [t.el] : [])))
+  const grouped = $derived(targets.some((t) => t.el?.group))
+
+  function setRotation(deg: number) {
+    change(() => {
+      const r = ((((deg + 180) % 360) + 360) % 360) - 180
+      for (const e of shapes) e.rotate = r || undefined
+    })
+  }
 
   const strokeKeys: (keyof Style)[] = ['stroke', 'fill', 'width', 'dash']
   const textKeys: (keyof Style)[] = ['font', 'size', 'bold', 'italic', 'color']
@@ -117,6 +126,18 @@
             <button {title} onclick={() => reorder(how)}><Icon name={icon} /></button>
           {/each}
         </div>
+        {#if targets.length >= 2 || grouped}
+          <div class="seg">
+            <button disabled={targets.length < 2} title="Group (⌘G)" onclick={groupSelection}>Group</button>
+            <button disabled={!grouped} title="Ungroup (⇧⌘G)" onclick={ungroupSelection}>Ungroup</button>
+          </div>
+        {/if}
+        {#if shapes.length}
+          <div class="row">
+            <span class="label">Rotation</span>
+            <NumberInput label="Rotation" unit="°" step={15} min={-360} value={shapes[0].rotate ?? 0} onchange={setRotation} />
+          </div>
+        {/if}
       </section>
       {#if shapeCount >= 2}
         <section>
@@ -285,6 +306,10 @@
     font-size: 12px;
     text-transform: capitalize;
     border-radius: 6px;
+  }
+  .seg button:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
   .seg button.on {
     background: var(--panel);

@@ -11,6 +11,8 @@
     checkpoint,
     copy,
     duplicate,
+    groupSelection,
+    ungroupSelection,
     loadDocuments,
     newDocument,
     zoomBy,
@@ -67,6 +69,7 @@
     else if (mod && k === 's') download('cetz', 'typ')
     else if (mod && k === 'o') pickFile()
     else if (mod && k === 'n') newDocument()
+    else if (mod && k === 'g') e.shiftKey ? ungroupSelection() : groupSelection()
     else if (mod && e.code === 'BracketRight') reorder(e.shiftKey ? 'front' : 'forward')
     else if (mod && e.code === 'BracketLeft') reorder(e.shiftKey ? 'back' : 'backward')
     else if (mod && (k === '=' || k === '+')) zoomBy(1.25)

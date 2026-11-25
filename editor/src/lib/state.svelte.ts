@@ -1,4 +1,4 @@
-import { bounds, endCenter, find, PX_PER_CM } from './geometry'
+import { bounds, endCenter, find, PX_PER_CM, rotatePoint } from './geometry'
 import { deleteDoc, listDocs, loadDoc, saveDoc, type DocMeta } from './docs'
 import { defaultStyle, isNode, type Diagram, type Element, type Point, type ShapeKind, type Style } from './types'
 
@@ -162,6 +162,18 @@ export function paste(items = clipboard, offset = 0.5) {
   checkpoint()
   const ids = new Map<string, string>()
   const copies = structuredClone(items)
+  const groups = new Map<string, string>()
+  const used = new Set(app.diagram.elements.map((e) => e.group))
+  for (const e of copies) {
+    if (!e.group) continue
+    if (!groups.has(e.group)) {
+      let n = 1
+      while (used.has(`g${n}`)) n++
+      used.add(`g${n}`)
+      groups.set(e.group, `g${n}`)
+    }
+    e.group = groups.get(e.group)
+  }
   for (const e of copies) {
     const id = newId(e.type === 'line' ? 'e' : e.type === 'shape' && e.shape === 'text' ? 't' : 'n')
     ids.set(e.id, id)
@@ -184,6 +196,57 @@ export function paste(items = clipboard, offset = 0.5) {
     }
   }
   app.selection = copies.map((e) => e.id)
+}
+
+/** Adds all members of any group touched by `ids`. */
+export function expandGroups(ids: string[]): string[] {
+  const groups = new Set(ids.map((id) => find(app.diagram, id)?.group).filter((g) => g))
+  if (!groups.size) return ids
+  const members = app.diagram.elements.filter((e) => e.group && groups.has(e.group)).map((e) => e.id)
+  return [...new Set([...ids, ...members])]
+}
+
+/** Groups the selection, keeping members adjacent in the stacking order at the topmost member. */
+export function groupSelection() {
+  if (app.selection.length < 2) return
+  checkpoint()
+  const sel = new Set(app.selection)
+  const used = new Set(app.diagram.elements.map((e) => e.group))
+  let n = 1
+  while (used.has(`g${n}`)) n++
+  const members = app.diagram.elements.filter((e) => sel.has(e.id))
+  for (const e of members) e.group = `g${n}`
+  const lastIndex = Math.max(...members.map((e) => app.diagram.elements.indexOf(e)))
+  const before = app.diagram.elements.slice(0, lastIndex + 1).filter((e) => !sel.has(e.id))
+  const after = app.diagram.elements.slice(lastIndex + 1)
+  app.diagram.elements = [...before, ...members, ...after]
+}
+
+export function ungroupSelection() {
+  checkpoint()
+  for (const id of app.selection) {
+    const e = find(app.diagram, id)
+    if (e) delete e.group
+  }
+}
+
+/** Rotates elements (from their snapshots) clockwise by `deg` around `pivot`. */
+export function rotateElements(orig: Element[], deg: number, pivot: Point) {
+  for (const o of orig) {
+    const e = find(app.diagram, o.id)
+    if (!e) continue
+    if (e.type === 'shape' && o.type === 'shape') {
+      const c = rotatePoint({ x: o.x + o.w / 2, y: o.y + o.h / 2 }, pivot, deg)
+      e.x = c.x - o.w / 2
+      e.y = c.y - o.h / 2
+      const r = ((((o.rotate ?? 0) + deg) % 360) + 360) % 360
+      e.rotate = Math.round((r > 180 ? r - 360 : r) * 100) / 100 || undefined
+    } else if (e.type === 'line' && o.type === 'line') {
+      e.via = o.via.map((p) => rotatePoint(p, pivot, deg))
+      if (!isNode(o.from)) e.from = rotatePoint(o.from, pivot, deg)
+      if (!isNode(o.to)) e.to = rotatePoint(o.to, pivot, deg)
+    }
+  }
 }
 
 export function duplicate() {

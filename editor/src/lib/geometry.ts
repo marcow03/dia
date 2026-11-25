@@ -22,9 +22,18 @@ export function endCenter(d: Diagram, e: End): Point {
   return s ? center(s) : isNode(e) ? { x: 0, y: 0 } : e
 }
 
+/** Rotates `p` clockwise (on screen) by `deg` around `c`. */
+export function rotatePoint(p: Point, c: Point, deg = 0): Point {
+  if (!deg) return p
+  const a = (deg * Math.PI) / 180
+  const [dx, dy] = [p.x - c.x, p.y - c.y]
+  return { x: c.x + dx * Math.cos(a) - dy * Math.sin(a), y: c.y + dx * Math.sin(a) + dy * Math.cos(a) }
+}
+
 /** Point where the ray from the shape center towards `p` leaves the shape. */
 export function border(s: Shape, p: Point): Point {
   const c = center(s)
+  if (s.rotate) return rotatePoint(border({ ...s, rotate: 0 }, rotatePoint(p, c, -s.rotate)), c, s.rotate)
   const [dx, dy, hw, hh] = [p.x - c.x, p.y - c.y, s.w / 2, s.h / 2]
   if (dx === 0 && dy === 0) return c
   let t: number
@@ -148,11 +157,23 @@ export function labelPoint(d: Diagram, e: Element): Point {
   const at = e.label_at
   if (e.type === 'line') return linePointAt(d, e, at && 't' in at ? at.t : 0.5)
   const c = center(e)
-  return at && 'dx' in at ? { x: c.x + at.dx, y: c.y + at.dy } : c
+  return at && 'dx' in at ? rotatePoint({ x: c.x + at.dx, y: c.y + at.dy }, c, e.rotate) : c
 }
 
 export function bounds(d: Diagram, e: Element) {
-  if (e.type === 'shape') return { x: e.x, y: e.y, w: e.w, h: e.h }
+  if (e.type === 'shape' && !e.rotate) return { x: e.x, y: e.y, w: e.w, h: e.h }
+  if (e.type === 'shape') {
+    const c = center(e)
+    const pts = [
+      { x: e.x, y: e.y },
+      { x: e.x + e.w, y: e.y },
+      { x: e.x, y: e.y + e.h },
+      { x: e.x + e.w, y: e.y + e.h },
+    ].map((q) => rotatePoint(q, c, e.rotate))
+    const xs = pts.map((q) => q.x)
+    const ys = pts.map((q) => q.y)
+    return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+  }
   const p = [...linePoints(d, e), ...e.via]
   const xs = p.map((q) => q.x)
   const ys = p.map((q) => q.y)
@@ -164,8 +185,9 @@ export function bounds(d: Diagram, e: Element) {
 export function shapeAt(d: Diagram, p: Point, exclude?: string): Shape | undefined {
   for (let i = d.elements.length - 1; i >= 0; i--) {
     const e = d.elements[i]
-    if (e.type === 'shape' && e.id !== exclude && p.x >= e.x && p.x <= e.x + e.w && p.y >= e.y && p.y <= e.y + e.h)
-      return e
+    if (e.type !== 'shape' || e.id === exclude) continue
+    const q = rotatePoint(p, center(e), -(e.rotate ?? 0))
+    if (q.x >= e.x && q.x <= e.x + e.w && q.y >= e.y && q.y <= e.y + e.h) return e
   }
 }
 

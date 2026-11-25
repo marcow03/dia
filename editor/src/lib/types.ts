@@ -24,8 +24,18 @@ export type Style = {
 
 /** Label placement: offset from a shape's center (cm), or position along a line (0..1). */
 export type LabelAt = { dx: number; dy: number } | { t: number }
-type Base = { id: string; style: Style; label: string; label_at?: LabelAt }
-export type Shape = Base & { type: 'shape'; shape: ShapeKind; x: number; y: number; w: number; h: number; src?: string }
+type Base = { id: string; style: Style; label: string; label_at?: LabelAt; group?: string }
+/** `rotate` is clockwise around the center, in degrees. */
+export type Shape = Base & {
+  type: 'shape'
+  shape: ShapeKind
+  x: number
+  y: number
+  w: number
+  h: number
+  src?: string
+  rotate?: number
+}
 export type Line = Base & { type: 'line'; from: End; to: End; via: Point[]; curved: boolean }
 export type Element = Shape | Line
 export type Diagram = { elements: Element[] }

@@ -22,6 +22,8 @@
 <g data-id={el.id}>
   {#if el.type === 'shape'}
     {@const c = center(el)}
+    {@const at = el.label_at && 'dx' in el.label_at ? el.label_at : { dx: 0, dy: 0 }}
+    <g transform={el.rotate ? `rotate(${el.rotate} ${c.x} ${c.y})` : undefined}>
     {#if el.shape === 'rect'}
       <rect x={el.x} y={el.y} width={el.w} height={el.h} rx={el.style.radius} {fill} {stroke} stroke-width={sw} stroke-dasharray={dash} stroke-linecap={cap} />
     {:else if el.shape === 'ellipse'}
@@ -47,8 +49,9 @@
       <rect x={el.x} y={el.y} width={el.w} height={el.h} fill="transparent" />
     {/if}
     {#if el.label && !editing}
-      <Label source={el.label} style={el.style} cx={lp.x} cy={lp.y} handle={el.shape === 'text' ? undefined : handle} />
+      <Label source={el.label} style={el.style} cx={c.x + at.dx} cy={c.y + at.dy} handle={el.shape === 'text' ? undefined : handle} />
     {/if}
+    </g>
   {:else}
     {@const path = linePath(d, el)}
     <path d={path} fill="none" stroke="transparent" stroke-width={12 / scale} class="hit" />
