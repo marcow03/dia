@@ -35,6 +35,7 @@
       {/each}
     </div>
   {/if}
+  <button onclick={run(() => (app.showSettings = true))}>Settings…<kbd>⌘,</kbd></button>
   <button onclick={run(() => (app.showCode = !app.showCode))}>
     {app.showCode ? 'Hide' : 'Show'} CeTZ code<kbd>⇧C</kbd>
   </button>

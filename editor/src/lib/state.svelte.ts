@@ -7,11 +7,22 @@ export type Tool = 'select' | 'hand' | ShapeKind | 'line' | 'arrow'
 export type DrawTool = Exclude<Tool, 'select' | 'hand' | 'image'>
 
 const CURRENT_KEY = 'dia:current'
+const SETTINGS_KEY = 'dia:settings'
+
+export type Settings = { vim: boolean }
+
+function loadSettings(): Settings {
+  try {
+    return { vim: false, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') }
+  } catch {
+    return { vim: false }
+  }
+}
 const DEFAULTS_KEY = 'dia:tool-defaults'
 
-function toolDefaults(): Record<DrawTool, Style> {
+export function factoryDefaults(): Record<DrawTool, Style> {
   const d = () => defaultStyle()
-  const all = {
+  return {
     rect: d(),
     ellipse: d(),
     diamond: d(),
@@ -19,6 +30,10 @@ function toolDefaults(): Record<DrawTool, Style> {
     arrow: { ...d(), end: 'stealth' as const },
     text: { ...d(), stroke: null },
   }
+}
+
+function toolDefaults(): Record<DrawTool, Style> {
+  const all = factoryDefaults()
   try {
     return { ...all, ...JSON.parse(localStorage.getItem(DEFAULTS_KEY) ?? '{}') }
   } catch {
@@ -39,6 +54,10 @@ export const app = $state({
   toast: '',
   /** Style given to new elements, per tool; edited in the style panel while a tool is active. */
   defaults: toolDefaults(),
+  settings: loadSettings(),
+  showSettings: false,
+  /** Label being typed in the label editor, rendered live in place. */
+  draft: null as string | null,
 })
 
 /** Loads the last opened document from the browser. */
@@ -51,6 +70,7 @@ export async function loadDocuments() {
 let saveTimer: ReturnType<typeof setTimeout>
 $effect.root(() => {
   $effect(() => localStorage.setItem(DEFAULTS_KEY, JSON.stringify(app.defaults)))
+  $effect(() => localStorage.setItem(SETTINGS_KEY, JSON.stringify(app.settings)))
   $effect(() => {
     const doc = { id: app.docId, name: app.name, diagram: $state.snapshot(app.diagram) as Diagram, updated: Date.now() }
     if (!doc.diagram.elements.length && doc.name === 'untitled') return
@@ -130,8 +150,8 @@ export function addShape(shape: ShapeKind, x: number, y: number, w: number, h: n
 }
 
 /** Sizes a text box to its rendered label, keeping the top-left corner in place. */
-export async function fitTextBox(e: Shape) {
-  const r = await renderLabel(e.label, e.style)
+export async function fitTextBox(e: Shape, source = e.label) {
+  const r = await renderLabel(source, e.style)
   if (!('svg' in r)) return
   const w = Math.max(r.w / PT_PER_CM + 0.3, 0.5)
   const h = Math.max(r.h / PT_PER_CM + 0.2, 0.5)

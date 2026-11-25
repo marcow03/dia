@@ -25,6 +25,7 @@
     undo,
     type Tool,
   } from './lib/state.svelte'
+  import Settings from './lib/Settings.svelte'
   import StylePanel from './lib/StylePanel.svelte'
   import Toolbar from './lib/Toolbar.svelte'
   import ZoomControls from './lib/ZoomControls.svelte'
@@ -50,6 +51,7 @@
       app.selection = []
       app.tool = 'select'
       app.showCode = false
+      app.showSettings = false
       menuOpen = false
       return
     }
@@ -69,6 +71,7 @@
     else if (mod && k === 's') download('cetz', 'typ')
     else if (mod && k === 'o') pickFile()
     else if (mod && k === 'n') newDocument()
+    else if (mod && k === ',') app.showSettings = true
     else if (mod && k === 'g') e.shiftKey ? ungroupSelection() : groupSelection()
     else if (mod && e.code === 'BracketRight') reorder(e.shiftKey ? 'front' : 'forward')
     else if (mod && e.code === 'BracketLeft') reorder(e.shiftKey ? 'back' : 'backward')
@@ -146,6 +149,7 @@
     {#if app.diagram.elements.length === 0}
       <p class="empty">Pick a tool below, or double-click anywhere to write Typst.<br />Drop a .typ, .tex or .drawio file or an image here.</p>
     {/if}
+    {#if app.showSettings}<Settings />{/if}
     {#if app.toast}<div class="toast">{app.toast}</div>{/if}
   {/await}
 </main>

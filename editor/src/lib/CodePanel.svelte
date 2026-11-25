@@ -1,18 +1,14 @@
 <script lang="ts">
   import { read, write } from './core'
+  import CodeEditor from './CodeEditor.svelte'
   import { app, setDiagram } from './state.svelte'
 
-  let code = $state('')
+  let code = $derived(write(app.diagram, 'cetz'))
   let error = $state('')
-  let focused = $state(false)
   let timer: ReturnType<typeof setTimeout>
 
-  $effect(() => {
-    const out = write(app.diagram, 'cetz')
-    if (!focused) code = out
-  })
-
-  function input() {
+  function input(v: string) {
+    code = v
     clearTimeout(timer)
     timer = setTimeout(() => {
       try {
@@ -31,14 +27,7 @@
     <span>CeTZ</span>
     <button onclick={() => navigator.clipboard.writeText(code)}>Copy</button>
   </header>
-  <textarea
-    bind:value={code}
-    oninput={input}
-    onfocus={() => (focused = true)}
-    onblur={() => (focused = false)}
-    onkeydown={(e) => e.key !== 'Escape' && e.stopPropagation()}
-    spellcheck="false"
-  ></textarea>
+  <div class="body"><CodeEditor value={code} onchange={input} /></div>
   {#if error}<pre class="error">{error}</pre>{/if}
 </aside>
 
@@ -71,16 +60,10 @@
     padding: 0 10px;
     height: 26px;
   }
-  textarea {
+  .body {
     flex: 1;
-    padding: 12px 14px;
-    border: none;
-    resize: none;
-    outline: none;
-    background: transparent;
-    color: var(--text);
-    font: 12px/1.6 var(--mono);
-    white-space: pre;
+    min-height: 0;
+    overflow: auto;
   }
   .error {
     margin: 0;

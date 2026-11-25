@@ -19,8 +19,10 @@
   const lp = $derived(labelPoint(d, el))
 
   // Text boxes follow their content: label, font, size, weight.
+  const label = $derived(editing ? (app.draft ?? '') : el.label)
+
   $effect(() => {
-    if (el.type === 'shape' && el.shape === 'text' && el.label && !editing) fitTextBox(el)
+    if (el.type === 'shape' && el.shape === 'text' && label) fitTextBox(el, label)
   })
 </script>
 
@@ -53,13 +55,14 @@
     {:else}
       <rect x={el.x} y={el.y} width={el.w} height={el.h} fill="transparent" />
     {/if}
-    {#if el.label && !editing}
+    {#if label}
       <Label
-        source={el.label}
+        source={label}
         style={el.style}
         cx={c.x + at.dx}
         cy={c.y + at.dy}
-        handle={el.shape === 'text' ? undefined : handle}
+        handle={el.shape === 'text' || editing ? undefined : handle}
+        keepLast={editing}
       />
     {/if}
     </g>
@@ -73,8 +76,8 @@
         <path d={head.d} fill={head.filled ? stroke : 'none'} {stroke} stroke-width={sw} stroke-linejoin="round" stroke-linecap="round" />
       {/if}
     {/each}
-    {#if el.label && !editing}
-      <Label source={el.label} style={el.style} cx={lp.x} cy={lp.y} background {handle} />
+    {#if label}
+      <Label source={label} style={el.style} cx={lp.x} cy={lp.y} background handle={editing ? undefined : handle} keepLast={editing} />
     {/if}
   {/if}
 </g>

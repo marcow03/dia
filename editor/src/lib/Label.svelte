@@ -10,6 +10,7 @@
     cy,
     background = false,
     handle,
+    keepLast = false,
   }: {
     source: string
     style: Style
@@ -17,13 +18,18 @@
     cy: number
     background?: boolean
     handle?: string
+    /** Keep showing the last successful render while the source is broken (e.g. mid-typing). */
+    keepLast?: boolean
   } = $props()
 
   let result = $state<Rendered | null>(null)
 
   $effect(() => {
     let current = true
-    renderLabel(source, style).then((r) => current && (result = r))
+    const keep = keepLast
+    renderLabel(source, style).then((r) => {
+      if (current && !(keep && 'error' in r && result && 'svg' in result)) result = r
+    })
     return () => (current = false)
   })
 
