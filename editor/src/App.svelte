@@ -11,6 +11,7 @@
     checkpoint,
     copy,
     duplicate,
+    expandGroups,
     groupSelection,
     ungroupSelection,
     loadDocuments,
@@ -29,7 +30,7 @@
   import StylePanel from './lib/StylePanel.svelte'
   import Toolbar from './lib/Toolbar.svelte'
   import ZoomControls from './lib/ZoomControls.svelte'
-  import { find } from './lib/geometry'
+  import { bounds, find, PX_PER_CM } from './lib/geometry'
 
   let menuOpen = $state(false)
   const loaded = Promise.all([ready, loadDocuments()])
@@ -58,6 +59,15 @@
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
     const mod = e.metaKey || e.ctrlKey
     const k = e.key.toLowerCase()
+    // Arrows or vim's hjkl: move the selection, or with Ctrl jump to the adjacent object.
+    // hjkl only act as arrows with a selection (or Ctrl), so h and l stay tool shortcuts otherwise.
+    const dir = directions[k]
+    if (dir && !e.metaKey && !e.altKey && (k.startsWith('arrow') || app.selection.length || e.ctrlKey)) {
+      e.preventDefault()
+      if (e.ctrlKey) selectAdjacent(dir)
+      else if (app.selection.length) nudge(dir, e.shiftKey ? 1 / (app.view.zoom * PX_PER_CM) : 0.25)
+      return
+    }
     if (mod && k === 'z') e.shiftKey ? redo() : undo()
     else if (mod && k === 'y') redo()
     else if (mod && k === 'c') copy()
@@ -84,7 +94,6 @@
       checkpoint()
       remove(app.selection)
     } else if (k === 'enter' && app.selection.length === 1) app.editing = app.selection[0]
-    else if (k.startsWith('arrow') && app.selection.length) nudge(k, e.shiftKey ? 1 : 0.25)
     else if (k === 'i') pickImage()
     else if (e.shiftKey && e.code === 'Digit1') zoomToFit()
     else if (e.shiftKey && e.code === 'KeyC') app.showCode = !app.showCode
@@ -93,9 +102,20 @@
     e.preventDefault()
   }
 
-  function nudge(key: string, step: number) {
+  const directions: Record<string, [number, number]> = {
+    arrowleft: [-1, 0],
+    arrowright: [1, 0],
+    arrowup: [0, -1],
+    arrowdown: [0, 1],
+    h: [-1, 0],
+    l: [1, 0],
+    k: [0, -1],
+    j: [0, 1],
+  }
+
+  function nudge([ux, uy]: [number, number], step: number) {
     checkpoint()
-    const [dx, dy] = { arrowleft: [-step, 0], arrowright: [step, 0], arrowup: [0, -step], arrowdown: [0, step] }[key]!
+    const [dx, dy] = [ux * step, uy * step]
     for (const id of app.selection) {
       const e = find(app.diagram, id)
       if (e?.type === 'shape') {
@@ -107,6 +127,36 @@
         if (!('node' in e.to)) e.to = { x: e.to.x + dx, y: e.to.y + dy }
       }
     }
+  }
+
+  /**
+   * Selects the closest object whose center lies within 60° of `dir` from the selection's center
+   * (or from the middle of the window when nothing is selected).
+   */
+  function selectAdjacent([ux, uy]: [number, number]) {
+    const d = app.diagram
+    const mid = (e: (typeof d.elements)[number]) => {
+      const b = bounds(d, e)
+      return { x: b.x + b.w / 2, y: b.y + b.h / 2 }
+    }
+    const current = app.selection.map((id) => find(d, id)).filter((e) => e !== undefined)
+    const scale = app.view.zoom * PX_PER_CM
+    const from = current.length
+      ? mid(current[0])
+      : { x: (innerWidth / 2 - app.view.x) / scale, y: (innerHeight / 2 - app.view.y) / scale }
+    const skip = new Set(app.selection)
+    let best: { id: string; score: number } | null = null
+    for (const e of d.elements) {
+      if (skip.has(e.id)) continue
+      const c = mid(e)
+      const [vx, vy] = [c.x - from.x, c.y - from.y]
+      const dist = Math.hypot(vx, vy)
+      const along = vx * ux + vy * uy
+      if (current.length && (along <= 0 || along < dist * Math.cos(Math.PI / 3))) continue
+      const score = current.length ? dist * (2 - along / dist) : dist
+      if (!best || score < best.score) best = { id: e.id, score }
+    }
+    if (best) app.selection = expandGroups([best.id])
   }
 
   function focusName(e: FocusEvent) {
