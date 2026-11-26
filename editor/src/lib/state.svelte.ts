@@ -1,7 +1,7 @@
-import { bounds, endCenter, find, PT_PER_CM, PX_PER_CM, rotatePoint } from './geometry'
+import { bounds, find, linePoints, PT_PER_CM, PX_PER_CM, rotatePoint } from './geometry'
 import { renderLabel } from './typst'
 import { deleteDoc, listDocs, loadDoc, saveDoc, type DocMeta } from './docs'
-import { defaultStyle, isNode, type Diagram, type Element, type Point, type Shape, type ShapeKind, type Style } from './types'
+import { defaultStyle, isNode, type Diagram, type Element, type End, type Point, type Shape, type ShapeKind, type Style } from './types'
 
 export type Tool = 'select' | 'hand' | ShapeKind | 'line' | 'arrow'
 export type DrawTool = Exclude<Tool, 'select' | 'hand' | 'image'>
@@ -161,11 +161,10 @@ export async function fitTextBox(e: Shape, source = e.label) {
   }
 }
 
-export function addLine(from: Element['id'] | Point, to: Point, tool: 'line' | 'arrow') {
+export function addLine(from: End, to: Point, tool: 'line' | 'arrow') {
   const id = newId('e')
   const style = structuredClone($state.snapshot(app.defaults[tool]))
-  const fromEnd = typeof from === 'string' ? { node: from } : from
-  app.diagram.elements.push({ id, type: 'line', from: fromEnd, to, via: [], curved: false, style, label: '' })
+  app.diagram.elements.push({ id, type: 'line', from, to, via: [], curved: false, style, label: '' })
   return id
 }
 
@@ -176,7 +175,10 @@ export function remove(ids: string[]) {
     if (e.type !== 'line') continue
     for (const k of ['from', 'to'] as const) {
       const end = e[k]
-      if (isNode(end) && ids.includes(end.node)) e[k] = endCenter(d, end)
+      if (isNode(end) && ids.includes(end.node)) {
+        const points = linePoints(d, e)
+        e[k] = k === 'from' ? points[0] : points[points.length - 1]
+      }
     }
   }
   d.elements = d.elements.filter((e) => !ids.includes(e.id))
@@ -224,7 +226,7 @@ export function paste(items = clipboard, offset = 0.5) {
       for (const k of ['from', 'to'] as const) {
         const end = el[k]
         if (!isNode(end)) el[k] = move(end)
-        else if (ids.has(end.node)) el[k] = { node: ids.get(end.node)! }
+        else if (ids.has(end.node)) el[k] = { ...end, node: ids.get(end.node)! }
       }
     }
   }

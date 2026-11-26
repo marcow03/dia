@@ -1,10 +1,10 @@
 <script lang="ts">
   import ElementView from './ElementView.svelte'
-  import { bounds, center, find, labelPoint, lineProject, linePoints, PX_PER_CM, rotatePoint, shapeAt, snap } from './geometry'
+  import { anchorPoint, bounds, center, find, labelPoint, lineProject, linePoints, PX_PER_CM, rotatePoint, shapeAt, snap } from './geometry'
   import { openFiles, readImage } from './files'
   import LabelEditor from './LabelEditor.svelte'
   import { addLine, addShape, app, checkpoint, expandGroups, remove, rotateElements, zoomBy } from './state.svelte'
-  import { isNode, type Element, type End, type Point, type Shape } from './types'
+  import { anchors, isNode, type Anchor, type Element, type End, type Point, type Shape } from './types'
 
   type Drag =
     | { kind: 'pan'; sx: number; sy: number; vx: number; vy: number }
@@ -21,6 +21,7 @@
   let svg: SVGSVGElement
   let drag = $state<Drag | null>(null)
   let hover = $state<string | null>(null)
+  let hoverAnchor = $state<Anchor | null>(null)
   let guides = $state<{ x1: number; y1: number; x2: number; y2: number }[]>([])
   let sizeMarks = $state<{ x: number; y: number; w: number; h: number; dim: 'w' | 'h' }[]>([])
   let spaceDown = $state(false)
@@ -58,7 +59,24 @@
 
   const snapP = (p: Point) => ({ x: snap(p.x), y: snap(p.y) })
 
+  /** Anchor within reach of `p` (10 screen px), on any shape but `exclude`. */
+  function anchorAt(p: Point, exclude?: string): { node: string; anchor: Anchor } | null {
+    let best: { node: string; anchor: Anchor; dist: number } | null = null
+    for (const e of d.elements) {
+      if (e.type !== 'shape' || e.shape === 'text' || e.id === exclude) continue
+      for (const a of anchors) {
+        const q = anchorPoint(e, a)
+        const dist = Math.hypot(q.x - p.x, q.y - p.y)
+        if (dist < 10 / scale && (!best || dist < best.dist)) best = { node: e.id, anchor: a, dist }
+      }
+    }
+    return best && { node: best.node, anchor: best.anchor }
+  }
+
+  /** A line end at `p`: snapped to a nearby anchor, bound to the shape under it, or a free point. */
   function endAt(p: Point, exclude?: string): End {
+    const a = anchorAt(p, exclude)
+    if (a) return a
     const s = shapeAt(d, p, exclude)
     return s && s.shape !== 'text' ? { node: s.id } : snapP(p)
   }
@@ -99,7 +117,7 @@
     if (app.tool === 'line' || app.tool === 'arrow') {
       checkpoint()
       const from = endAt(p)
-      const nid = addLine(isNode(from) ? from.node : from, snapP(p), app.tool)
+      const nid = addLine(from, snapP(p), app.tool)
       app.selection = [nid]
       drag = { kind: 'end', id: nid, which: 'to' }
       return
@@ -140,7 +158,8 @@
   function move(ev: PointerEvent) {
     const p = world(ev)
     if (!drag) {
-      hover = app.tool === 'line' || app.tool === 'arrow' ? (shapeAt(d, p)?.id ?? null) : null
+      hover = app.tool === 'line' || app.tool === 'arrow' ? (anchorAt(p)?.node ?? shapeAt(d, p)?.id ?? null) : null
+      hoverAnchor = hover ? (anchorAt(p)?.anchor ?? null) : null
       return
     }
     switch (drag.kind) {
@@ -202,6 +221,7 @@
         const end = endAt(p, isNode(other) ? other.node : undefined)
         el[drag.which] = end
         hover = isNode(end) ? end.node : null
+        hoverAnchor = isNode(end) ? (end.anchor ?? null) : null
         break
       }
       case 'add': {
@@ -286,6 +306,7 @@
     }
     drag = null
     hover = null
+    hoverAnchor = null
     guides = []
     sizeMarks = []
   }
@@ -460,6 +481,12 @@
           rx={0.1}
           stroke-width={3 / scale}
         />
+        {#if h.shape !== 'text'}
+          {#each anchors as a}
+            {@const q = anchorPoint(h, a)}
+            <circle class="anchor" class:on={hoverAnchor === a} cx={q.x} cy={q.y} r={(hoverAnchor === a ? 5 : 3.5) / scale} stroke-width={1.5 / scale} />
+          {/each}
+        {/if}
       {/if}
     {/if}
 
@@ -582,6 +609,14 @@
   .handle {
     fill: white;
     stroke: var(--accent);
+  }
+  .anchor {
+    fill: white;
+    stroke: var(--accent);
+    pointer-events: none;
+  }
+  .anchor.on {
+    fill: var(--accent);
   }
   .group {
     fill: none;

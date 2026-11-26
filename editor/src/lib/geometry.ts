@@ -1,4 +1,4 @@
-import { isNode, type Arrow, type Diagram, type Element, type End, type Line, type Point, type Shape } from './types'
+import { isNode, type Anchor, type Arrow, type Diagram, type Element, type End, type Line, type Point, type Shape } from './types'
 
 export const PX_PER_CM = 40
 export const PT_PER_CM = 28.3465
@@ -44,14 +44,27 @@ export function border(s: Shape, p: Point): Point {
 }
 
 /** Resolved points of a line: start, via..., end, with node ends clipped to the shape border. */
+/** Position of an anchor on a shape (side midpoints and corners on the outline), rotation included. */
+export function anchorPoint(s: Shape, a: Anchor): Point {
+  const dx = a.includes('east') ? 1 : a.includes('west') ? -1 : 0
+  const dy = a.includes('south') ? 1 : a.includes('north') ? -1 : 0
+  const k = !dx || !dy ? 1 : s.shape === 'ellipse' ? Math.SQRT1_2 : s.shape === 'diamond' ? 0.5 : 1
+  const c = center(s)
+  return rotatePoint({ x: c.x + (dx * k * s.w) / 2, y: c.y + (dy * k * s.h) / 2 }, c, s.rotate)
+}
+
+/** Resolved points of a line: start, via..., end, with node ends at their anchor or clipped to the border. */
 export function linePoints(d: Diagram, l: Line): Point[] {
-  const from = endCenter(d, l.from)
-  const to = endCenter(d, l.to)
-  const first = l.via[0] ?? to
-  const last = l.via[l.via.length - 1] ?? from
   const fs = endShape(d, l.from)
   const ts = endShape(d, l.to)
-  return [fs ? border(fs, first) : from, ...l.via, ts ? border(ts, last) : to]
+  const anchored = (s: Shape | undefined, e: End) => (s && isNode(e) && e.anchor ? anchorPoint(s, e.anchor) : null)
+  const fa = anchored(fs, l.from)
+  const ta = anchored(ts, l.to)
+  const from = fa ?? endCenter(d, l.from)
+  const to = ta ?? endCenter(d, l.to)
+  const first = l.via[0] ?? to
+  const last = l.via[l.via.length - 1] ?? from
+  return [fa ?? (fs ? border(fs, first) : from), ...l.via, ta ?? (ts ? border(ts, last) : to)]
 }
 
 export const isBezier = (l: Line) => l.curved && l.via.length >= 1 && l.via.length <= 2

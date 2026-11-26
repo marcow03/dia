@@ -4,7 +4,7 @@
 The IR (`ir.rs`) is small and semantic. It describes shapes and connections, not drawing commands:
 
 - `Shape { shape: rect | ellipse | diamond | text, x, y, w, h }`
-- `Line { from, to, via, curved }`. An `End` is either a point or `{ node: id }`, a binding to a shape. With `curved` and 1–2 `via` points, the via points are bezier control points. Otherwise they are polyline waypoints.
+- `Line { from, to, via, curved }`. An `End` is either a point or `{ node: id, anchor? }`, a binding to a shape. Without an anchor the line meets the border on the way to the centre; with one of the 8 compass anchors (side midpoints and corners, on the outline for ellipses and diamonds) it starts exactly there. CeTZ: named anchors (`"north-east"`; diamonds use the polygon's `corner-i`/`edge-i`), TikZ: `(n1.north east)`, drawio: `exitX/exitY` and `entryX/entryY`. With `curved` and 1–2 `via` points, the via points are bezier control points. Otherwise they are polyline waypoints.
 - `rotate` on shapes: clockwise degrees around the centre. CeTZ: a `scope` with `rotate(-θ, origin: centre)` (anchor angles are then measured in the rotated frame), TikZ: `rotate=-θ`, drawio: `rotation=θ`.
 - `group` on elements: a flat group id; members are kept adjacent in z-order. CeTZ: `scope({ // group g1 … })` (a CeTZ `group` would hide member names from arrows), TikZ: `\begin{scope}[local bounding box=g1]`, drawio: a `group` cell with members in relative coordinates.
 - `Style { stroke, fill, width (pt), dash, radius (cm), start_arrow, end_arrow }`. Colours are hex strings, and `None` means no stroke or no fill.
