@@ -49,7 +49,7 @@ pub(crate) mod tests {
             group: None,
             label_at: None,
         };
-        let node = |n: &str| End::Node { node: n.into() };
+        let node = |n: &str| End::node(n);
         let mut d = Diagram {
             elements: vec![
                 shape(
@@ -177,6 +177,18 @@ pub(crate) mod tests {
         };
         d.elements[0].label_at = Some(LabelAt::Offset { dx: 0.5, dy: -0.25 });
         d.elements[0].group = Some("g1".into());
+        for e in &mut d.elements {
+            if let (Kind::Line { from, to, .. }, "e2") = (&mut e.kind, e.id.as_str()) {
+                *from = End::Node {
+                    node: "n2".into(),
+                    anchor: Some(Anchor::East),
+                };
+                *to = End::Node {
+                    node: "n3".into(),
+                    anchor: Some(Anchor::NorthEast),
+                };
+            }
+        }
         d.elements[1].group = Some("g1".into());
         if let Kind::Shape { rotate, .. } = &mut d.elements[2].kind {
             *rotate = 20.0;

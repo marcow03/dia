@@ -26,7 +26,7 @@
           <mxGeometry x="-0.4" relative="1" as="geometry">
           </mxGeometry>
         </mxCell>
-        <mxCell id="e2" value="" style="html=1;rounded=0;endArrow=block;endFill=1;startArrow=oval;startFill=1;strokeColor=#000000;fillColor=none;fontColor=#000000;fontSize=14;dashed=1;dashPattern=1 2;" edge="1" parent="1" source="n2" target="n3">
+        <mxCell id="e2" value="" style="html=1;rounded=0;endArrow=block;endFill=1;startArrow=oval;startFill=1;strokeColor=#000000;fillColor=none;fontColor=#000000;fontSize=14;dashed=1;dashPattern=1 2;exitX=1;exitY=0.5;entryX=1;entryY=0;" edge="1" parent="1" source="n2" target="n3">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="340" y="30"/>

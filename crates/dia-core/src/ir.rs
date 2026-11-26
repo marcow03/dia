@@ -97,7 +97,101 @@ pub struct Point {
 #[serde(untagged)]
 pub enum End {
     Point(Point),
-    Node { node: String },
+    /// Bound to a shape: at a fixed anchor, or where the line meets the border when `None`.
+    Node {
+        node: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        anchor: Option<Anchor>,
+    },
+}
+
+impl End {
+    pub fn node(node: impl Into<String>) -> End {
+        End::Node {
+            node: node.into(),
+            anchor: None,
+        }
+    }
+}
+
+/// Connection points on a shape: side midpoints and corners.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Anchor {
+    North,
+    NorthEast,
+    East,
+    SouthEast,
+    South,
+    SouthWest,
+    West,
+    NorthWest,
+}
+
+impl Anchor {
+    pub const ALL: [Anchor; 8] = [
+        Anchor::North,
+        Anchor::NorthEast,
+        Anchor::East,
+        Anchor::SouthEast,
+        Anchor::South,
+        Anchor::SouthWest,
+        Anchor::West,
+        Anchor::NorthWest,
+    ];
+
+    /// Direction from the center, each component -1, 0 or 1 (y down).
+    pub fn dir(self) -> (f64, f64) {
+        match self {
+            Anchor::North => (0.0, -1.0),
+            Anchor::NorthEast => (1.0, -1.0),
+            Anchor::East => (1.0, 0.0),
+            Anchor::SouthEast => (1.0, 1.0),
+            Anchor::South => (0.0, 1.0),
+            Anchor::SouthWest => (-1.0, 1.0),
+            Anchor::West => (-1.0, 0.0),
+            Anchor::NorthWest => (-1.0, -1.0),
+        }
+    }
+
+    /// Name with the given separator, e.g. `north-east` or `north east`.
+    pub fn name(self, sep: &str) -> String {
+        let n = match self {
+            Anchor::North => "north",
+            Anchor::NorthEast => "north_east",
+            Anchor::East => "east",
+            Anchor::SouthEast => "south_east",
+            Anchor::South => "south",
+            Anchor::SouthWest => "south_west",
+            Anchor::West => "west",
+            Anchor::NorthWest => "north_west",
+        };
+        n.replace('_', sep)
+    }
+
+    pub fn from_name(s: &str) -> Option<Anchor> {
+        let s: String = s
+            .chars()
+            .filter(|c| c.is_ascii_alphabetic())
+            .collect::<String>()
+            .to_lowercase();
+        Anchor::ALL.into_iter().find(|a| a.name("") == s)
+    }
+
+    /// Nearest anchor to a position in the unit square (0, 0 = top-left).
+    pub fn from_unit(x: f64, y: f64) -> Anchor {
+        let d = |a: Anchor| {
+            let (dx, dy) = a.dir();
+            ((dx + 1.0) / 2.0 - x).powi(2) + ((dy + 1.0) / 2.0 - y).powi(2)
+        };
+        Anchor::ALL.into_iter().min_by(|a, b| d(*a).total_cmp(&d(*b))).unwrap()
+    }
+
+    /// Position in the unit square (0, 0 = top-left), as used by drawio.
+    pub fn unit(self) -> (f64, f64) {
+        let (dx, dy) = self.dir();
+        ((dx + 1.0) / 2.0, (dy + 1.0) / 2.0)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -231,10 +325,17 @@ impl Diagram {
     pub fn center(&self, end: &End) -> Point {
         match end {
             End::Point(p) => *p,
-            End::Node { node } => match self.get(node).map(|e| &e.kind) {
+            End::Node { node, .. } => match self.get(node).map(|e| &e.kind) {
                 Some(Kind::Shape { x, y, w, h, .. }) => Point::new(x + w / 2.0, y + h / 2.0),
                 _ => Point::default(),
             },
+        }
+    }
+
+    pub fn shape_kind(&self, id: &str) -> Option<ShapeKind> {
+        match self.get(id).map(|e| &e.kind) {
+            Some(Kind::Shape { shape, .. }) => Some(*shape),
+            _ => None,
         }
     }
 

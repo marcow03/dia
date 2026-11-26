@@ -133,7 +133,8 @@ fn xy(x: f64, y: f64) -> String {
 fn end(e: &End) -> String {
     match e {
         End::Point(p) => format!("({})", xy(p.x, p.y)),
-        End::Node { node } => format!("({node})"),
+        End::Node { node, anchor: None } => format!("({node})"),
+        End::Node { node, anchor: Some(a) } => format!("({node}.{})", a.name(" ")),
     }
 }
 
@@ -463,7 +464,7 @@ fn tokenize(s: &str) -> Vec<Tok> {
 
 enum Pos {
     P(Point),
-    Node(String),
+    Node(String, Option<Anchor>),
 }
 
 struct NodeSpec {
@@ -640,7 +641,7 @@ impl Reader<'_> {
                 "below left" => (-1.0, 1.0),
                 _ => continue,
             };
-            let c = self.resolve(&Pos::Node(target.trim().to_string()));
+            let c = self.resolve(&Pos::Node(target.trim().to_string(), None));
             return Some(Point::new(c.x + dx * dist, c.y + dy * dist));
         }
         None
@@ -820,17 +821,18 @@ impl Reader<'_> {
             let (a, r) = (a.trim().parse::<f64>().ok()?.to_radians(), length(r)?);
             return Some(Pos::P(Point::new(r * a.cos(), -r * a.sin())));
         }
-        let name = s.split('.').next().unwrap_or(s).trim();
+        let (name, anchor) = s.split_once('.').map_or((s, None), |(n, a)| (n, Anchor::from_name(a)));
+        let name = name.trim();
         match self.coords.get(name) {
             Some(p) => Some(Pos::P(*p)),
-            None => Some(Pos::Node(name.to_string())),
+            None => Some(Pos::Node(name.to_string(), anchor)),
         }
     }
 
     fn resolve(&self, p: &Pos) -> Point {
         match p {
             Pos::P(p) => *p,
-            Pos::Node(n) => self.d.center(&End::Node { node: n.clone() }),
+            Pos::Node(n, _) => self.d.center(&End::node(n.clone())),
         }
     }
 
@@ -1025,7 +1027,7 @@ impl Reader<'_> {
         }
         let to_end = |p: Pos| match p {
             Pos::P(p) => End::Point(p),
-            Pos::Node(node) => End::Node { node },
+            Pos::Node(node, anchor) => End::Node { node, anchor },
         };
         let to = to_end(pts.pop().unwrap());
         let mut it = pts.drain(..);
@@ -1195,7 +1197,13 @@ mod tests {
         assert_eq!(lines[0].style.width, 0.8);
         if let Kind::Line { via, to, .. } = &lines[1].kind {
             assert_eq!(via.len(), 2);
-            assert_eq!(to, &End::Node { node: "b".into() });
+            assert_eq!(
+                to,
+                &End::Node {
+                    node: "b".into(),
+                    anchor: Some(Anchor::South)
+                }
+            );
         }
         assert_eq!(d.elements.len(), 6);
         assert_eq!(w.len(), 1, "{w:?}");

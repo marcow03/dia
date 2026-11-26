@@ -110,9 +110,18 @@ pub fn write(d: &Diagram) -> String {
                 style_attrs(s, &mut style);
                 let mut attrs = String::new();
                 let mut points = String::new();
-                for (end, attr, as_) in [(from, "source", "sourcePoint"), (to, "target", "targetPoint")] {
+                for (end, attr, as_, side) in [
+                    (from, "source", "sourcePoint", "exit"),
+                    (to, "target", "targetPoint", "entry"),
+                ] {
                     match end {
-                        End::Node { node } => write!(attrs, " {attr}=\"{}\"", escape(node.as_str())).unwrap(),
+                        End::Node { node, anchor } => {
+                            write!(attrs, " {attr}=\"{}\"", escape(node.as_str())).unwrap();
+                            if let Some(a) = anchor {
+                                let (x, y) = a.unit();
+                                style.push(format!("{side}X={};{side}Y={}", num(x), num(y)));
+                            }
+                        }
                         End::Point(p) => write!(
                             points,
                             "\n            <mxPoint x=\"{}\" y=\"{}\" as=\"{as_}\"/>",
@@ -371,12 +380,23 @@ pub fn read(src: &str, w: &mut Warnings) -> Result<Diagram> {
         } else if c.edge {
             style.end = get("endArrow").map_or(Arrow::Stealth, arrow_from_name);
             style.start = get("startArrow").map_or(Arrow::None, arrow_from_name);
-            let end = |node: &Option<String>, point: Option<Point>| match (node, point) {
-                (Some(n), _) => Some(End::Node { node: n.clone() }),
+            let anchor = |side: &str| {
+                let x = get(&format!("{side}X"))?.parse().ok()?;
+                let y = get(&format!("{side}Y"))?.parse().ok()?;
+                Some(Anchor::from_unit(x, y))
+            };
+            let end = |node: &Option<String>, point: Option<Point>, side: &str| match (node, point) {
+                (Some(n), _) => Some(End::Node {
+                    node: n.clone(),
+                    anchor: anchor(side),
+                }),
                 (None, Some(p)) => Some(End::Point(px(p))),
                 _ => None,
             };
-            let (Some(from), Some(to)) = (end(&c.source, c.source_point), end(&c.target, c.target_point)) else {
+            let (Some(from), Some(to)) = (
+                end(&c.source, c.source_point, "exit"),
+                end(&c.target, c.target_point, "entry"),
+            ) else {
                 w.push(format!("edge `{}` without endpoints skipped", c.id));
                 continue;
             };

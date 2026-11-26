@@ -174,7 +174,13 @@ fn pt(x: f64, y: f64) -> String {
 fn end(d: &Diagram, e: &End, toward: Point) -> String {
     match e {
         End::Point(p) => pt(p.x, p.y),
-        End::Node { node } => {
+        End::Node { node, anchor: Some(a) } => {
+            format!(
+                "(name: \"{node}\", anchor: \"{}\")",
+                anchor_name(d.shape_kind(node), *a)
+            )
+        }
+        End::Node { node, anchor: None } => {
             let c = d.center(e);
             let rotate = match d.get(node).map(|n| &n.kind) {
                 Some(Kind::Shape { rotate, .. }) => *rotate,
@@ -185,6 +191,33 @@ fn end(d: &Diagram, e: &End, toward: Point) -> String {
             format!("(name: \"{node}\", anchor: {}deg)", num(deg))
         }
     }
+}
+
+/// Diamonds are 4-sided polygons: corners start east and go counterclockwise, edge i follows corner i.
+const DIAMOND_ANCHORS: [(Anchor, &str); 8] = [
+    (Anchor::East, "corner-0"),
+    (Anchor::North, "corner-1"),
+    (Anchor::West, "corner-2"),
+    (Anchor::South, "corner-3"),
+    (Anchor::NorthEast, "edge-0"),
+    (Anchor::NorthWest, "edge-1"),
+    (Anchor::SouthWest, "edge-2"),
+    (Anchor::SouthEast, "edge-3"),
+];
+
+fn anchor_name(shape: Option<ShapeKind>, a: Anchor) -> String {
+    match shape {
+        Some(ShapeKind::Diamond) => DIAMOND_ANCHORS.iter().find(|(x, _)| *x == a).unwrap().1.to_string(),
+        _ => a.name("-"),
+    }
+}
+
+fn parse_anchor(name: &str) -> Option<Anchor> {
+    DIAMOND_ANCHORS
+        .iter()
+        .find(|(_, n)| *n == name)
+        .map(|(a, _)| *a)
+        .or_else(|| Anchor::from_name(name))
 }
 
 fn style_args(s: &Style, closed: bool, args: &mut Vec<String>) {
@@ -641,15 +674,26 @@ pub fn named_color(name: &str) -> Option<&'static str> {
 
 enum Coord {
     P(Point),
-    Node(String),
+    Node(String, Option<Anchor>),
 }
 
 fn coord(v: &Value) -> Option<Coord> {
     match v {
         Value::Array(a) if a.len() >= 2 => Some(Coord::P(Point::new(a[0].num()?, -a[1].num()?))),
-        Value::Str(s) => Some(Coord::Node(s.split('.').next()?.to_string())),
+        Value::Str(s) => {
+            let (name, anchor) = s
+                .split_once('.')
+                .map_or((s.as_str(), None), |(n, a)| (n, parse_anchor(a)));
+            Some(Coord::Node(name.to_string(), anchor))
+        }
         Value::Dict(_) => match v.get("name").or(v.get("to")) {
-            Some(Value::Str(s)) => Some(Coord::Node(s.split('.').next()?.to_string())),
+            Some(Value::Str(s)) => {
+                let anchor = match v.get("anchor") {
+                    Some(Value::Str(a)) => parse_anchor(a),
+                    _ => None,
+                };
+                Some(Coord::Node(s.split('.').next()?.to_string(), anchor))
+            }
             _ => None,
         },
         _ => None,
@@ -659,7 +703,7 @@ fn coord(v: &Value) -> Option<Coord> {
 fn to_end(c: Coord) -> End {
     match c {
         Coord::P(p) => End::Point(p),
-        Coord::Node(node) => End::Node { node },
+        Coord::Node(node, anchor) => End::Node { node, anchor },
     }
 }
 
@@ -725,7 +769,7 @@ fn element(
                 });
             };
             match coords.as_slice() {
-                [Coord::Node(target)] => {
+                [Coord::Node(target, _)] => {
                     let at = &call.pos[0];
                     let label_at = match (at.get("anchor"), at.get("rel")) {
                         (Some(Value::Ratio(t)), _) => Some(LabelAt::Along { t: *t }),
@@ -777,7 +821,7 @@ fn element(
                     .into_iter()
                     .filter_map(|c| match c {
                         Coord::P(p) => Some(p),
-                        Coord::Node(_) => None,
+                        Coord::Node(..) => None,
                     })
                     .collect();
                 style.fill = None;

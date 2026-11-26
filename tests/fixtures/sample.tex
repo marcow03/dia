@@ -10,7 +10,7 @@
   \node[font=\bfseries\itshape\fontsize{14}{16.8}\selectfont, text={rgb,255:red,255;green,59;blue,48}, minimum width=3cm, minimum height=1.5cm, inner sep=0pt, align=right] (t1) at (1.5, -3.75) {note};
   \node[minimum width=2cm, minimum height=1cm, inner sep=0pt, align=left] (i1) at (11, -0.5) {\includegraphics[width=2cm, height=1cm]{logo.png}};
   \draw[-{Stealth}] (n1) -- (n2) node[pos=0.3, fill=white, align=left] {$\alpha$};
-  \draw[dotted, {Circle}-{Triangle}] (n2) -- (8.5, -0.75) -- (8.5, -3.75) -- (n3);
+  \draw[dotted, {Circle}-{Triangle}] (n2.east) -- (8.5, -0.75) -- (8.5, -3.75) -- (n3.north east);
   \draw[line width=0.5pt, -{Straight Barb}] (0, -6) .. controls (2, -5) and (4, -7) .. (n3);
 \end{tikzpicture}
 \end{document}
