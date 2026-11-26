@@ -169,12 +169,15 @@
         <h3>Stroke</h3>
         <div class="row">
           <ColorPicker value={s.stroke} allowNone onchange={(v) => set('stroke', v)} />
-          <NumberInput label="Stroke width" value={s.width} step={0.25} onchange={(v) => set('width', v)} />
         </div>
         <div class="seg">
           {#each ['solid', 'dashed', 'dotted'] as const as dash}
             <button class:on={s.dash === dash} onclick={() => set('dash', dash)}>{dash}</button>
           {/each}
+        </div>
+        <div class="row">
+          <span class="label">Width</span>
+          <NumberInput label="Stroke width" value={s.width} step={0.25} onchange={(v) => set('width', v)} />
         </div>
         {#if has('rect')}
           <div class="row">
