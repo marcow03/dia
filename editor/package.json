@@ -35,5 +35,6 @@
     "@myriaddreamin/typst.ts": "^0.7.0",
     "@replit/codemirror-vim": "^6.4.0",
     "idb-keyval": "^6.3.0"
-  }
+  },
+  "license": "CC-BY-NC-4.0"
 }

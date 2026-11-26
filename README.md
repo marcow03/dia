@@ -120,3 +120,7 @@ Requires Rust with the `wasm32-unknown-unknown` target and Node.js. Typst fonts 
 ## Deploy
 
 `.github/workflows/deploy.yml` tests the core, builds the editor and publishes it to GitHub Pages on `v*.*.*` tags or when run manually. Set *Settings → Pages → Source* to **GitHub Actions** once.
+
+## License
+
+[CC BY-NC 4.0](LICENSE): free to use, share and adapt for non-commercial purposes with attribution. Exported diagrams are your own.
