@@ -3,7 +3,7 @@
   import Canvas from './lib/Canvas.svelte'
   import CodePanel from './lib/CodePanel.svelte'
   import { ready } from './lib/core'
-  import { download, pickFile, pickImage } from './lib/files'
+  import { download, openFiles, pickFile, pickImage } from './lib/files'
   import Icon from './lib/Icon.svelte'
   import Menu from './lib/Menu.svelte'
   import {
@@ -34,6 +34,14 @@
 
   let menuOpen = $state(false)
   const loaded = Promise.all([ready, loadDocuments()])
+
+  // Files opened with the installed app (via the manifest's file handlers).
+  type LaunchParams = { files: { getFile(): Promise<File> }[] }
+  const launchQueue = (window as unknown as { launchQueue?: { setConsumer(f: (p: LaunchParams) => void): void } }).launchQueue
+  launchQueue?.setConsumer(async ({ files }) => {
+    await loaded
+    if (files.length) openFiles(await Promise.all(files.map((f) => f.getFile())))
+  })
 
   const toolKeys: Record<string, Tool> = {
     v: 'select',
