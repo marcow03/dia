@@ -157,7 +157,6 @@
         <div class="row">
           <div class="seg grow">
             <button title="Rotate left" onclick={() => setRotation((shapes[0].rotate ?? 0) - 90)}>−90°</button>
-            <button title="Reset rotation" onclick={() => setRotation(0)}>0°</button>
             <button title="Rotate right" onclick={() => setRotation((shapes[0].rotate ?? 0) + 90)}>+90°</button>
           </div>
           <NumberInput label="Rotation" unit="°" step={15} min={-360} value={shapes[0].rotate ?? 0} onchange={setRotation} />
