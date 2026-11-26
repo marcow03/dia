@@ -132,12 +132,6 @@
             <button disabled={!grouped} title="Ungroup (⇧⌘G)" onclick={ungroupSelection}>Ungroup</button>
           </div>
         {/if}
-        {#if shapes.length}
-          <div class="row">
-            <span class="label">Rotation</span>
-            <NumberInput label="Rotation" unit="°" step={15} min={-360} value={shapes[0].rotate ?? 0} onchange={setRotation} />
-          </div>
-        {/if}
       </section>
       {#if shapeCount >= 2}
         <section>
@@ -155,6 +149,20 @@
           </div>
         </section>
       {/if}
+    {/if}
+
+    {#if !editingDefaults && shapes.length}
+      <section>
+        <h3>Rotation</h3>
+        <div class="row">
+          <div class="seg grow">
+            <button title="Rotate left" onclick={() => setRotation((shapes[0].rotate ?? 0) - 90)}>−90°</button>
+            <button title="Reset rotation" onclick={() => setRotation(0)}>0°</button>
+            <button title="Rotate right" onclick={() => setRotation((shapes[0].rotate ?? 0) + 90)}>+90°</button>
+          </div>
+          <NumberInput label="Rotation" unit="°" step={15} min={-360} value={shapes[0].rotate ?? 0} onchange={setRotation} />
+        </div>
+      </section>
     {/if}
 
     {#if has('rect', 'shape', 'line')}
@@ -291,6 +299,9 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .grow {
+    flex: 1;
   }
   .label {
     font-size: 12px;
