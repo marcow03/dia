@@ -59,12 +59,14 @@
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
     const mod = e.metaKey || e.ctrlKey
     const k = e.key.toLowerCase()
-    // Arrows or vim's hjkl: move the selection, or with Ctrl jump to the adjacent object.
-    // hjkl only act as arrows with a selection (or Ctrl), so h and l stay tool shortcuts otherwise.
+    // Arrows or vim's hjkl: move the selection (⇧: by a pixel), or with ⌃⇧ jump to the adjacent object.
+    // Plain ⌃+arrows belong to macOS (switching desktops). hjkl only act as arrows with a selection
+    // (or ⌃⇧), so h and l stay tool shortcuts otherwise.
     const dir = directions[k]
-    if (dir && !e.metaKey && !e.altKey && (k.startsWith('arrow') || app.selection.length || e.ctrlKey)) {
+    const adjacent = e.ctrlKey && e.shiftKey
+    if (dir && !e.metaKey && !e.altKey && (e.ctrlKey ? adjacent : k.startsWith('arrow') || app.selection.length)) {
       e.preventDefault()
-      if (e.ctrlKey) selectAdjacent(dir)
+      if (adjacent) selectAdjacent(dir)
       else if (app.selection.length) nudge(dir, e.shiftKey ? 1 / (app.view.zoom * PX_PER_CM) : 0.25)
       return
     }
