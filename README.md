@@ -53,6 +53,8 @@ dia-core reads every format into one intermediate model and writes it back out, 
 | `⌘A` | Select all |
 | `Delete` / `Backspace` | Delete selection |
 | `⇧`-click | Add to / remove from selection |
+| `⇧` + drag object, line end or waypoint | Move freely, pixel by pixel (no snapping) |
+| `⇧` + resize | Keep the aspect ratio (new shapes: square / circle) |
 | `Esc` | Deselect, back to select tool, close menus and dialogs |
 
 **Arrange**
@@ -73,7 +75,7 @@ dia-core reads every format into one intermediate model and writes it back out, 
 | --- | --- |
 | Scroll | Pan |
 | Pinch or `⌘` + scroll | Zoom |
-| `Space` + drag, middle-drag | Pan |
+| `Space` + drag, `⇧` + drag on empty canvas, middle-drag | Pan |
 | `⌘+` / `⌘−` / `⌘0` | Zoom in / out / 100% |
 | `⇧1` | Zoom to fit |
 

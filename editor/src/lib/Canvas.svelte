@@ -23,10 +23,14 @@
   let hover = $state<string | null>(null)
   let hoverAnchor = $state<Anchor | null>(null)
   let guides = $state<{ x1: number; y1: number; x2: number; y2: number }[]>([])
+  /** Aspect ratio the size snapped to, shown as a diagonal across the shape. */
+  let diagonal = $state<number | null>(null)
   let sizeMarks = $state<{ x: number; y: number; w: number; h: number; dim: 'w' | 'h' }[]>([])
   let spaceDown = $state(false)
+  let shiftDown = $state(false)
   // Pointer capture retargets dblclick to the svg, so remember what the press hit.
   let pressedId: string | undefined
+  let deselectOnClick: string[] | null = null
 
   const scale = $derived(app.view.zoom * PX_PER_CM)
   const d = $derived(app.diagram)
@@ -74,25 +78,27 @@
   }
 
   /** A line end at `p`: snapped to a nearby anchor, bound to the shape under it, or a free point. */
-  function endAt(p: Point, exclude?: string): End {
+  function endAt(p: Point, exclude?: string, free = false): End {
     const a = anchorAt(p, exclude)
     if (a) return a
     const s = shapeAt(d, p, exclude)
-    return s && s.shape !== 'text' ? { node: s.id } : snapP(p)
+    return s && s.shape !== 'text' ? { node: s.id } : free ? p : snapP(p)
   }
 
   function down(ev: PointerEvent) {
     if (app.editing) return
     svg.setPointerCapture(ev.pointerId)
     const p = world(ev)
-    if (ev.button === 1 || spaceDown || app.tool === 'hand') {
+    const target = ev.target as globalThis.Element
+    const handleEl = target.closest?.('[data-handle]') as HTMLElement | null
+    const id = (target.closest?.('[data-id]') as HTMLElement | null)?.dataset.id
+    // ⇧ on empty canvas pans like the hand tool.
+    const shiftPan = ev.shiftKey && app.tool === 'select' && !id && !handleEl
+    if (ev.button === 1 || spaceDown || app.tool === 'hand' || shiftPan) {
       drag = { kind: 'pan', sx: ev.clientX, sy: ev.clientY, vx: app.view.x, vy: app.view.y }
       return
     }
     if (ev.button !== 0) return
-    const target = ev.target as globalThis.Element
-    const handleEl = target.closest?.('[data-handle]') as HTMLElement | null
-    const id = (target.closest?.('[data-id]') as HTMLElement | null)?.dataset.id
     pressedId = id ?? handleEl?.dataset.handle?.split(':')[1]
 
     if (app.tool === 'rect' || app.tool === 'ellipse' || app.tool === 'diamond') {
@@ -140,10 +146,11 @@
     }
     if (id) {
       const ids = expandGroups([id])
-      if (ev.shiftKey) {
-        app.selection = app.selection.includes(id)
-          ? app.selection.filter((s) => !ids.includes(s))
-          : [...new Set([...app.selection, ...ids])]
+      if (ev.shiftKey && app.selection.includes(id)) {
+        // Deselect on release unless this turns into a (⇧ free) drag.
+        deselectOnClick = ids
+      } else if (ev.shiftKey) {
+        app.selection = [...new Set([...app.selection, ...ids])]
       } else if (!app.selection.includes(id)) {
         app.selection = ids
       }
@@ -168,7 +175,11 @@
         app.view.y = drag.vy + ev.clientY - drag.sy
         break
       case 'move': {
-        const [dx, dy] = alignDelta(drag.orig, p.x - drag.start.x, p.y - drag.start.y)
+        if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) > 3 / scale) deselectOnClick = null
+        // ⇧ moves freely, pixel by pixel, without grid or guide snapping.
+        const [dx, dy] = ev.shiftKey
+          ? ((guides = []), [p.x - drag.start.x, p.y - drag.start.y])
+          : alignDelta(drag.orig, p.x - drag.start.x, p.y - drag.start.y)
         const shift = (q: Point) => ({ x: q.x + dx, y: q.y + dy })
         for (const o of drag.orig) {
           const el = find(d, o.id)
@@ -193,7 +204,7 @@
         if (o.rotate) {
           // Resize in the shape's own frame, then move the new center back into place.
           const c0 = center(o)
-          sizeTo(el, fx, fy, rotatePoint(p, c0, -o.rotate))
+          sizeTo(el, fx, fy, rotatePoint(p, c0, -o.rotate), ev.shiftKey ? o.w / o.h : undefined, o.w / o.h)
           const c = rotatePoint(center(el), c0, o.rotate)
           el.x = c.x - el.w / 2
           el.y = c.y - el.h / 2
@@ -201,7 +212,7 @@
           break
         }
         if (el.shape !== 'image') {
-          sizeTo(el, fx, fy, p)
+          sizeTo(el, fx, fy, p, ev.shiftKey ? o.w / o.h : undefined, o.w / o.h)
           break
         }
         el.x = Math.min(fx, q.x)
@@ -211,14 +222,14 @@
         break
       }
       case 'create': {
-        sizeTo(find(d, drag.id) as Shape, drag.start.x, drag.start.y, p)
+        sizeTo(find(d, drag.id) as Shape, drag.start.x, drag.start.y, p, ev.shiftKey ? 1 : undefined)
         break
       }
       case 'end': {
         const el = find(d, drag.id)
         if (el?.type !== 'line') break
         const other = el[drag.which === 'to' ? 'from' : 'to']
-        const end = endAt(p, isNode(other) ? other.node : undefined)
+        const end = endAt(p, isNode(other) ? other.node : undefined, ev.shiftKey)
         el[drag.which] = end
         hover = isNode(end) ? end.node : null
         hoverAnchor = isNode(end) ? (end.anchor ?? null) : null
@@ -260,7 +271,7 @@
       }
       case 'via': {
         const el = find(d, drag.id)
-        if (el?.type === 'line') el.via[drag.index] = snapP(p)
+        if (el?.type === 'line') el.via[drag.index] = ev.shiftKey ? p : snapP(p)
         break
       }
       case 'marquee': {
@@ -286,6 +297,11 @@
   }
 
   function up() {
+    if (deselectOnClick) {
+      const ids = deselectOnClick
+      app.selection = app.selection.filter((s) => !ids.includes(s))
+      deselectOnClick = null
+    }
     if (drag?.kind === 'create') {
       const el = find(d, drag.id) as Shape
       if (el.w < 0.5 || el.h < 0.5) {
@@ -309,6 +325,7 @@
     hoverAnchor = null
     guides = []
     sizeMarks = []
+    diagonal = null
   }
 
   function dblclick(ev: MouseEvent) {
@@ -329,14 +346,31 @@
    * Sizes a shape from the fixed corner (fx, fy) towards `p`, snapping width and height
    * to those of other shapes (marking all matches) or to the grid.
    */
-  function sizeTo(el: Shape, fx: number, fy: number, p: Point) {
+  function sizeTo(el: Shape, fx: number, fy: number, p: Point, lock?: number, ratio?: number) {
     const others = d.elements.filter((e): e is Shape => e.type === 'shape' && e.id !== el.id)
+    const tol = 6 / scale
     const fit = (raw: number, dim: 'w' | 'h') => {
-      const m = others.find((o) => Math.abs(o[dim] - raw) < 6 / scale)
+      const m = others.find((o) => Math.abs(o[dim] - raw) < tol)
       return m ? m[dim] : Math.max(snap(raw), 0.25)
     }
-    el.w = fit(Math.abs(p.x - fx), 'w')
-    el.h = fit(Math.abs(p.y - fy), 'h')
+    const [rw, rh] = [Math.abs(p.x - fx), Math.abs(p.y - fy)]
+    diagonal = null
+    if (lock) {
+      // ⇧ keeps the aspect ratio: the dimension the pointer pushes further wins.
+      el.w = Math.max(rw, rh * lock, 0.25)
+      el.h = el.w / lock
+    } else {
+      el.w = fit(rw, 'w')
+      el.h = fit(rh, 'h')
+      // Aspect helper: snap to a square or back to the original ratio when close.
+      for (const r of [1, ratio]) {
+        if (r && Math.abs(rw / r - rh) < tol) {
+          el.h = el.w / r
+          diagonal = r
+          break
+        }
+      }
+    }
     el.x = p.x < fx ? fx - el.w : fx
     el.y = p.y < fy ? fy - el.h : fy
     const marks = (dim: 'w' | 'h') => {
@@ -424,8 +458,9 @@
   }
 
   function keys(ev: KeyboardEvent, isDown: boolean) {
-    if (ev.code === 'Space' && !(ev.target instanceof HTMLTextAreaElement || ev.target instanceof HTMLInputElement))
-      spaceDown = isDown
+    if (ev.target instanceof HTMLTextAreaElement || ev.target instanceof HTMLInputElement) return
+    if (ev.code === 'Space') spaceDown = isDown
+    if (ev.key === 'Shift') shiftDown = isDown
   }
 
   // Svelte registers wheel listeners as passive, which would let the browser zoom the page.
@@ -435,7 +470,11 @@
   })
 
   const cursor = $derived(
-    drag?.kind === 'pan' ? 'grabbing' : spaceDown || app.tool === 'hand' ? 'grab' : app.tool === 'select' ? 'default' : app.tool === 'text' ? 'text' : 'crosshair',
+    drag?.kind === 'pan'
+      ? 'grabbing'
+      : spaceDown || app.tool === 'hand' || (shiftDown && app.tool === 'select' && !drag)
+        ? 'grab'
+        : app.tool === 'select' ? 'default' : app.tool === 'text' ? 'text' : 'crosshair',
   )
   const grid = $derived(scale * 0.5)
 </script>
@@ -556,6 +595,23 @@
         {/if}
       {/if}
     {/each}
+
+    {#if diagonal && (drag?.kind === 'resize' || drag?.kind === 'create')}
+      {@const e = find(d, drag.id)}
+      {#if e?.type === 'shape'}
+        {@const c = center(e)}
+        <line
+          class="guide"
+          transform={e.rotate ? `rotate(${e.rotate} ${c.x} ${c.y})` : undefined}
+          x1={e.x}
+          y1={e.y}
+          x2={e.x + e.w}
+          y2={e.y + e.h}
+          stroke-width={1 / scale}
+          stroke-dasharray="{4 / scale} {3 / scale}"
+        />
+      {/if}
+    {/if}
 
     {#each sizeMarks as m}
       {@const t = 6 / scale}
