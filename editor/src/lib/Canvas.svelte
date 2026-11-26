@@ -440,9 +440,11 @@
   </defs>
   <rect width="100%" height="100%" fill="url(#grid)" />
   <g transform="translate({app.view.x} {app.view.y}) scale({scale})">
-    {#each d.elements as el (el.id)}
-      <ElementView {el} {scale} />
-    {/each}
+    <g class="elements">
+      {#each d.elements as el (el.id)}
+        <ElementView {el} {scale} />
+      {/each}
+    </g>
 
     {#if hover}
       {@const h = find(d, hover)}

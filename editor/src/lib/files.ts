@@ -1,4 +1,5 @@
 import { formatForFile, read, write } from './core'
+import { diagramRaster, diagramSvg } from './image-export'
 import { PX_PER_CM, snap } from './geometry'
 import { addShape, app, checkpoint, newDocument, toast } from './state.svelte'
 
@@ -6,6 +7,9 @@ export const exports = [
   { format: 'cetz', ext: 'typ', label: 'CeTZ (Typst)' },
   { format: 'tikz', ext: 'tex', label: 'TikZ (LaTeX)' },
   { format: 'drawio', ext: 'drawio', label: 'draw.io' },
+  { format: 'svg', ext: 'svg', label: 'SVG image' },
+  { format: 'png', ext: 'png', label: 'PNG image' },
+  { format: 'jpeg', ext: 'jpg', label: 'JPEG image' },
 ]
 
 /** Mirrors `dia_core::image_path`: embedded images are exported as `<id>.<ext>`. */
@@ -22,9 +26,12 @@ function save(name: string, data: Blob | string) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
 }
 
-export function download(format: string, ext: string) {
+export async function download(format: string, ext: string) {
+  const name = `${app.name || 'untitled'}.${ext}`
   try {
-    save(`${app.name || 'untitled'}.${ext}`, new Blob([write(app.diagram, format)], { type: 'text/plain' }))
+    if (format === 'svg') return save(name, new Blob([diagramSvg().svg], { type: 'image/svg+xml' }))
+    if (format === 'png' || format === 'jpeg') return save(name, await diagramRaster(`image/${format}`))
+    save(name, new Blob([write(app.diagram, format)], { type: 'text/plain' }))
     if (format === 'drawio') return
     for (const e of app.diagram.elements) {
       if (e.type === 'shape' && e.src?.startsWith('data:')) save(imagePath(e.id, e.src), e.src)

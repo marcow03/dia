@@ -62,7 +62,9 @@
     })
     if (autofocus) {
       view.focus()
-      view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } })
+      // Vim starts in normal mode at the end; a programmatic selection would confuse its mode.
+      const end = view.state.doc.length
+      view.dispatch({ selection: app.settings.vim ? { anchor: end } : { anchor: 0, head: end } })
     }
     return () => {
       destroyed = true
