@@ -22,5 +22,5 @@
   line((name: "n1", anchor: 0deg), (name: "n2", anchor: -180deg), name: "e1", mark: (end: "stealth", fill: rgb("#000000")))
   content((name: "e1", anchor: 30%), [$alpha$], frame: "rect", fill: white, stroke: none, padding: 0.1)
   line((name: "n2", anchor: "east"), (8.5, -0.75), (8.5, -3.75), (name: "n3", anchor: "edge-0"), stroke: (paint: rgb("#000000"), thickness: 1pt, dash: "dotted"), mark: (start: "o", end: ">", fill: rgb("#000000")))
-  bezier((0, -6), (name: "n3", anchor: -107.569deg), (2, -5), (4, -7), stroke: (paint: rgb("#000000"), thickness: 0.5pt), mark: (end: "straight", fill: rgb("#000000")))
+  bezier((0, -6), (name: "n3", anchor: "center"), (2, -5), (4, -7), stroke: (paint: rgb("#000000"), thickness: 0.5pt), mark: (end: "straight", fill: rgb("#000000")))
 })

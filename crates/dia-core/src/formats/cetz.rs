@@ -194,7 +194,7 @@ fn end(d: &Diagram, e: &End, toward: Point) -> String {
 }
 
 /// Diamonds are 4-sided polygons: corners start east and go counterclockwise, edge i follows corner i.
-const DIAMOND_ANCHORS: [(Anchor, &str); 8] = [
+const DIAMOND_ANCHORS: [(Anchor, &str); 9] = [
     (Anchor::East, "corner-0"),
     (Anchor::North, "corner-1"),
     (Anchor::West, "corner-2"),
@@ -203,6 +203,7 @@ const DIAMOND_ANCHORS: [(Anchor, &str); 8] = [
     (Anchor::NorthWest, "edge-1"),
     (Anchor::SouthWest, "edge-2"),
     (Anchor::SouthEast, "edge-3"),
+    (Anchor::Center, "center"),
 ];
 
 fn anchor_name(shape: Option<ShapeKind>, a: Anchor) -> String {

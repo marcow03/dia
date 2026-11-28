@@ -27,7 +27,8 @@ function endInfo(d: Diagram, e: End, other: Point): EndInfo {
   if (!isNode(e)) return { p: e, dir: null }
   if (s?.type !== 'shape') return { p: { x: 0, y: 0 }, dir: null }
   const c = center(s)
-  if (e.anchor) {
+  // A route cannot start inside the shape, so the center anchor leaves from the facing side.
+  if (e.anchor && e.anchor !== 'center') {
     const p = anchorPoint(s, e.anchor)
     return { p, dir: dirTowards(p.x - c.x, p.y - c.y), anchor: e.anchor }
   }

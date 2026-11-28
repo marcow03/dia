@@ -114,7 +114,7 @@ impl End {
     }
 }
 
-/// Connection points on a shape: side midpoints and corners.
+/// Connection points on a shape: side midpoints, corners and the center.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Anchor {
@@ -126,10 +126,11 @@ pub enum Anchor {
     SouthWest,
     West,
     NorthWest,
+    Center,
 }
 
 impl Anchor {
-    pub const ALL: [Anchor; 8] = [
+    pub const ALL: [Anchor; 9] = [
         Anchor::North,
         Anchor::NorthEast,
         Anchor::East,
@@ -138,6 +139,7 @@ impl Anchor {
         Anchor::SouthWest,
         Anchor::West,
         Anchor::NorthWest,
+        Anchor::Center,
     ];
 
     /// Direction from the center, each component -1, 0 or 1 (y down).
@@ -151,6 +153,7 @@ impl Anchor {
             Anchor::SouthWest => (-1.0, 1.0),
             Anchor::West => (-1.0, 0.0),
             Anchor::NorthWest => (-1.0, -1.0),
+            Anchor::Center => (0.0, 0.0),
         }
     }
 
@@ -165,6 +168,7 @@ impl Anchor {
             Anchor::SouthWest => "south_west",
             Anchor::West => "west",
             Anchor::NorthWest => "north_west",
+            Anchor::Center => "center",
         };
         n.replace('_', sep)
     }

@@ -45,7 +45,7 @@ export function border(s: Shape, p: Point): Point {
 }
 
 /** Resolved points of a line: start, via..., end, with node ends clipped to the shape border. */
-/** Position of an anchor on a shape (side midpoints and corners on the outline), rotation included. */
+/** Position of an anchor on a shape (side midpoints and corners on the outline, or the center), rotation included. */
 export function anchorPoint(s: Shape, a: Anchor): Point {
   const dx = a.includes('east') ? 1 : a.includes('west') ? -1 : 0
   const dy = a.includes('south') ? 1 : a.includes('north') ? -1 : 0

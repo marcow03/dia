@@ -188,6 +188,12 @@ pub(crate) mod tests {
                     anchor: Some(Anchor::NorthEast),
                 };
             }
+            if let (Kind::Line { to, .. }, "e3") = (&mut e.kind, e.id.as_str()) {
+                *to = End::Node {
+                    node: "n3".into(),
+                    anchor: Some(Anchor::Center),
+                };
+            }
         }
         d.elements[1].group = Some("g1".into());
         if let Kind::Shape { rotate, .. } = &mut d.elements[2].kind {

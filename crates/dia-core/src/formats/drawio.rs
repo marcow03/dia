@@ -120,6 +120,10 @@ pub fn write(d: &Diagram) -> String {
                             if let Some(a) = anchor {
                                 let (x, y) = a.unit();
                                 style.push(format!("{side}X={};{side}Y={}", num(x), num(y)));
+                                // drawio projects connection points onto the outline unless told otherwise.
+                                if *a == Anchor::Center {
+                                    style.push(format!("{side}Perimeter=0"));
+                                }
                             }
                         }
                         End::Point(p) => write!(

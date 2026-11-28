@@ -1,6 +1,25 @@
 export type Point = { x: number; y: number }
-export type Anchor = 'north' | 'north-east' | 'east' | 'south-east' | 'south' | 'south-west' | 'west' | 'north-west'
-export const anchors: Anchor[] = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
+export type Anchor =
+  | 'north'
+  | 'north-east'
+  | 'east'
+  | 'south-east'
+  | 'south'
+  | 'south-west'
+  | 'west'
+  | 'north-west'
+  | 'center'
+export const anchors: Anchor[] = [
+  'north',
+  'north-east',
+  'east',
+  'south-east',
+  'south',
+  'south-west',
+  'west',
+  'north-west',
+  'center',
+]
 /** A free point, or bound to a shape: at an anchor, or where the line meets the border. */
 export type End = Point | { node: string; anchor?: Anchor }
 export type ShapeKind = 'rect' | 'ellipse' | 'diamond' | 'text' | 'image'
