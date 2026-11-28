@@ -84,14 +84,14 @@
     })
   }
 
-  type Mode = 'straight' | 'curved' | 'auto'
-  const modeOf = (l: (typeof lines)[number]): Mode => (l.auto ? 'auto' : l.curved ? 'curved' : 'straight')
+  type Mode = 'straight' | 'curved' | 'smart'
+  const modeOf = (l: (typeof lines)[number]): Mode => (l.smart ? 'smart' : l.curved ? 'curved' : 'straight')
   const setMode = (mode: Mode) =>
     change(() =>
       lines.forEach((l) => {
         l.curved = mode === 'curved'
-        if (mode === 'auto') l.auto = true
-        else delete l.auto
+        if (mode === 'smart') l.smart = true
+        else delete l.smart
       }),
     )
   const centerLabels = () => change(() => targets.forEach((t) => t.el && (t.el.label_at = undefined)))
@@ -225,8 +225,8 @@
         </div>
         {#if lines.length}
           <div class="seg">
-            {#each ['straight', 'curved', 'auto'] as const as mode}
-              <button class:on={modeOf(lines[0]) === mode} title={mode === 'auto' ? 'Route around shapes' : undefined} onclick={() => setMode(mode)}>
+            {#each ['straight', 'curved', 'smart'] as const as mode}
+              <button class:on={modeOf(lines[0]) === mode} title={mode === 'smart' ? 'Route around shapes; drag a corner to adjust by hand' : undefined} onclick={() => setMode(mode)}>
                 {mode}
               </button>
             {/each}

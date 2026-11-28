@@ -3,6 +3,7 @@
   import { anchorPoint, bounds, center, find, labelPoint, lineProject, linePoints, PX_PER_CM, rotatePoint, shapeAt, snap } from './geometry'
   import { openFiles, readImage } from './files'
   import LabelEditor from './LabelEditor.svelte'
+  import { freezeRoute } from './router'
   import { addLine, addShape, app, checkpoint, expandGroups, remove, rotateElements, zoomBy } from './state.svelte'
   import { anchors, isNode, type Anchor, type Element, type End, type Point, type Shape } from './types'
 
@@ -136,7 +137,11 @@
       checkpoint()
       if (kind === 'resize' && el.type === 'shape') drag = { kind: 'resize', id: hid, corner: arg, orig: { ...el } }
       else if (kind === 'end') drag = { kind: 'end', id: hid, which: arg as 'from' | 'to' }
-      else if (kind === 'via') drag = { kind: 'via', id: hid, index: +arg }
+      else if (kind === 'via') {
+        // Editing a smart route by hand turns it into a plain line through its corners.
+        if (el.type === 'line' && el.smart) freezeRoute(d, el)
+        drag = { kind: 'via', id: hid, index: +arg }
+      }
       else if (kind === 'label') drag = { kind: 'label', id: hid }
       else if (kind === 'add') drag = { kind: 'add', id: hid, index: +arg, start: p }
       else if (kind === 'rotate') {
@@ -240,6 +245,7 @@
         // Only a real drag inserts a waypoint, so clicks (and double-clicks) on the dot do not.
         const el = find(d, drag.id)
         if (el?.type !== 'line' || Math.hypot(p.x - drag.start.x, p.y - drag.start.y) < 4 / scale) break
+        if (el.smart) freezeRoute(d, el)
         el.via.splice(drag.index, 0, snapP(p))
         drag = { kind: 'via', id: drag.id, index: drag.index }
         break
@@ -272,7 +278,17 @@
       }
       case 'via': {
         const el = find(d, drag.id)
-        if (el?.type === 'line') el.via[drag.index] = ev.shiftKey ? p : snapP(p)
+        if (el?.type !== 'line') break
+        let q = ev.shiftKey ? p : snapP(p)
+        if (!ev.shiftKey) {
+          // Line up with the neighbouring points so horizontal and vertical segments stay straight.
+          const pts = linePoints(d, el)
+          for (const n of [pts[drag.index], pts[drag.index + 2]]) {
+            if (Math.abs(p.x - n.x) < 8 / scale) q = { ...q, x: n.x }
+            if (Math.abs(p.y - n.y) < 8 / scale) q = { ...q, y: n.y }
+          }
+        }
+        el.via[drag.index] = q
         break
       }
       case 'marquee': {
@@ -568,7 +584,7 @@
       {:else}
         {@const pts = linePoints(d, el)}
         {#if selected.length === 1 && !app.editing}
-          {#if !el.auto && (!el.curved || el.via.length === 0)}
+          {#if el.smart || !el.curved || el.via.length === 0}
             {@const lp = el.label ? labelPoint(d, el) : null}
             {#each pts.slice(1) as q, i}
               {@const mid = { x: (q.x + pts[i].x) / 2, y: (q.y + pts[i].y) / 2 }}
@@ -583,7 +599,7 @@
               />
             {/each}
           {/if}
-          {#each el.auto ? [] : el.via as q, i}
+          {#each el.smart ? pts.slice(1, -1) : el.via as q, i}
             <circle class="handle" data-handle="via:{el.id}:{i}" cx={q.x} cy={q.y} r={handle / 2} stroke-width={1.5 / scale} />
           {/each}
           {#each [['from', pts[0]], ['to', pts[pts.length - 1]]] as const as [which, q]}

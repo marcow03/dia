@@ -47,7 +47,7 @@ const cache = new Map<string, Route>()
  * Orthogonal route around all shapes: a shortest path with bend penalty on the grid formed by
  * the shapes' padded edges and the two line ends.
  */
-export function autoRoute(d: Diagram, l: Line): Route {
+export function smartRoute(d: Diagram, l: Line): Route {
   const obstacles: Rect[] = d.elements
     .filter((e) => e.type === 'shape')
     .map((e) => {
@@ -139,14 +139,24 @@ function simplify(points: Point[]): Point[] {
   return out
 }
 
-/** The diagram as the file formats see it: auto-routed lines become plain lines through their corners. */
+/** Turns a smart line into a plain line through its current corners, e.g. before editing it by hand. */
+export function freezeRoute(d: Diagram, l: Line) {
+  const r = smartRoute(d, l)
+  l.via = r.points.slice(1, -1)
+  if (isNode(l.from)) l.from = { node: l.from.node, anchor: r.fromAnchor }
+  if (isNode(l.to)) l.to = { node: l.to.node, anchor: r.toAnchor }
+  l.curved = false
+  delete l.smart
+}
+
+/** The diagram as the file formats see it: smart lines become plain lines through their corners. */
 export function resolveRoutes(d: Diagram): Diagram {
   return {
     elements: d.elements.map((e) => {
-      if (e.type !== 'line' || !e.auto) return e
-      const r = autoRoute(d, e)
+      if (e.type !== 'line' || !e.smart) return e
+      const r = smartRoute(d, e)
       const end = (x: End, anchor?: Anchor): End => (isNode(x) ? { node: x.node, anchor } : x)
-      const { auto: _, ...line } = e
+      const { smart: _, ...line } = e
       return { ...line, from: end(e.from, r.fromAnchor), to: end(e.to, r.toAnchor), via: r.points.slice(1, -1), curved: false }
     }),
   }
