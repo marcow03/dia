@@ -1,4 +1,5 @@
 import init, * as wasm from './wasm/dia_wasm'
+import { resolveRoutes } from './router'
 import type { Diagram } from './types'
 
 export type FormatInfo = { name: string; extensions: string[] }
@@ -10,7 +11,7 @@ export function read(input: string, from: string): { diagram: Diagram; warnings:
 }
 
 export function write(diagram: Diagram, to: string): string {
-  return wasm.write(JSON.stringify(diagram), to)
+  return wasm.write(JSON.stringify(resolveRoutes(diagram)), to)
 }
 
 export function formatForFile(name: string): string | undefined {

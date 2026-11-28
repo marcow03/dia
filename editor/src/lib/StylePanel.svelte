@@ -84,7 +84,16 @@
     })
   }
 
-  const setCurved = (curved: boolean) => change(() => lines.forEach((l) => (l.curved = curved)))
+  type Mode = 'straight' | 'curved' | 'auto'
+  const modeOf = (l: (typeof lines)[number]): Mode => (l.auto ? 'auto' : l.curved ? 'curved' : 'straight')
+  const setMode = (mode: Mode) =>
+    change(() =>
+      lines.forEach((l) => {
+        l.curved = mode === 'curved'
+        if (mode === 'auto') l.auto = true
+        else delete l.auto
+      }),
+    )
   const centerLabels = () => change(() => targets.forEach((t) => t.el && (t.el.label_at = undefined)))
 
   const alignments: [Align, string, string][] = [
@@ -216,8 +225,11 @@
         </div>
         {#if lines.length}
           <div class="seg">
-            <button class:on={!lines[0].curved} onclick={() => setCurved(false)}>Straight</button>
-            <button class:on={lines[0].curved} onclick={() => setCurved(true)}>Curved</button>
+            {#each ['straight', 'curved', 'auto'] as const as mode}
+              <button class:on={modeOf(lines[0]) === mode} title={mode === 'auto' ? 'Route around shapes' : undefined} onclick={() => setMode(mode)}>
+                {mode}
+              </button>
+            {/each}
           </div>
         {/if}
       </section>

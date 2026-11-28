@@ -1,3 +1,4 @@
+import { autoRoute } from './router'
 import { isNode, type Anchor, type Arrow, type Diagram, type Element, type End, type Line, type Point, type Shape } from './types'
 
 export const PX_PER_CM = 40
@@ -55,6 +56,7 @@ export function anchorPoint(s: Shape, a: Anchor): Point {
 
 /** Resolved points of a line: start, via..., end, with node ends at their anchor or clipped to the border. */
 export function linePoints(d: Diagram, l: Line): Point[] {
+  if (l.auto) return autoRoute(d, l).points
   const fs = endShape(d, l.from)
   const ts = endShape(d, l.to)
   const anchored = (s: Shape | undefined, e: End) => (s && isNode(e) && e.anchor ? anchorPoint(s, e.anchor) : null)
@@ -67,7 +69,7 @@ export function linePoints(d: Diagram, l: Line): Point[] {
   return [fa ?? (fs ? border(fs, first) : from), ...l.via, ta ?? (ts ? border(ts, last) : to)]
 }
 
-export const isBezier = (l: Line) => l.curved && l.via.length >= 1 && l.via.length <= 2
+export const isBezier = (l: Line) => !l.auto && l.curved && l.via.length >= 1 && l.via.length <= 2
 
 export function linePath(d: Diagram, l: Line): string {
   const p = linePoints(d, l)

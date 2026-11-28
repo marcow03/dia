@@ -41,7 +41,8 @@ export type Shape = Base & {
   src?: string
   rotate?: number
 }
-export type Line = Base & { type: 'line'; from: End; to: End; via: Point[]; curved: boolean }
+/** `auto` routes the line around shapes in the editor; exports get its corners as plain waypoints. */
+export type Line = Base & { type: 'line'; from: End; to: End; via: Point[]; curved: boolean; auto?: boolean }
 export type Element = Shape | Line
 export type Diagram = { elements: Element[] }
 

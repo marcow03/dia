@@ -79,7 +79,8 @@
 
   /** A line end at `p`: snapped to a nearby anchor, bound to the shape under it, or a free point. */
   function endAt(p: Point, exclude?: string, free = false): End {
-    const a = anchorAt(p, exclude)
+    // ⇧ places the end freely: no anchor snapping.
+    const a = free ? null : anchorAt(p, exclude)
     if (a) return a
     const s = shapeAt(d, p, exclude)
     return s && s.shape !== 'text' ? { node: s.id } : free ? p : snapP(p)
@@ -567,7 +568,7 @@
       {:else}
         {@const pts = linePoints(d, el)}
         {#if selected.length === 1 && !app.editing}
-          {#if !el.curved || el.via.length === 0}
+          {#if !el.auto && (!el.curved || el.via.length === 0)}
             {@const lp = el.label ? labelPoint(d, el) : null}
             {#each pts.slice(1) as q, i}
               {@const mid = { x: (q.x + pts[i].x) / 2, y: (q.y + pts[i].y) / 2 }}
@@ -582,7 +583,7 @@
               />
             {/each}
           {/if}
-          {#each el.via as q, i}
+          {#each el.auto ? [] : el.via as q, i}
             <circle class="handle" data-handle="via:{el.id}:{i}" cx={q.x} cy={q.y} r={handle / 2} stroke-width={1.5 / scale} />
           {/each}
           {#each [['from', pts[0]], ['to', pts[pts.length - 1]]] as const as [which, q]}
