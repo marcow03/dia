@@ -9,13 +9,14 @@ export type DrawTool = Exclude<Tool, 'select' | 'hand' | 'image'>
 const CURRENT_KEY = 'dia:current'
 const SETTINGS_KEY = 'dia:settings'
 
-export type Settings = { vim: boolean }
+/** `embedImages`: images go into CeTZ files as base64 instead of separate files. */
+export type Settings = { vim: boolean; embedImages: boolean }
 
 function loadSettings(): Settings {
   try {
-    return { vim: false, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') }
+    return { vim: false, embedImages: true, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? '{}') }
   } catch {
-    return { vim: false }
+    return { vim: false, embedImages: true }
   }
 }
 const DEFAULTS_KEY = 'dia:tool-defaults'

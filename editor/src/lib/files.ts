@@ -1,4 +1,4 @@
-import { formatForFile, read, write } from './core'
+import { formatForFile, imagePath, read, write } from './core'
 import { diagramRaster, diagramSvg } from './image-export'
 import { PX_PER_CM, snap } from './geometry'
 import { addShape, app, checkpoint, newDocument, toast } from './state.svelte'
@@ -11,12 +11,6 @@ export const exports = [
   { format: 'png', ext: 'png', label: 'PNG image' },
   { format: 'jpeg', ext: 'jpg', label: 'JPEG image' },
 ]
-
-/** Mirrors `dia_core::image_path`: embedded images are exported as `<id>.<ext>`. */
-function imagePath(id: string, src: string) {
-  const m = src.match(/^data:image\/([a-z]+)/)
-  return m ? `${id}.${m[1] === 'jpeg' ? 'jpg' : m[1]}` : src
-}
 
 function save(name: string, data: Blob | string) {
   const a = document.createElement('a')
@@ -32,7 +26,8 @@ export async function download(format: string, ext: string) {
     if (format === 'svg') return save(name, new Blob([diagramSvg().svg], { type: 'image/svg+xml' }))
     if (format === 'png' || format === 'jpeg') return save(name, await diagramRaster(`image/${format}`))
     save(name, new Blob([write(app.diagram, format)], { type: 'text/plain' }))
-    if (format === 'drawio') return
+    // draw.io always embeds images, CeTZ does when the setting is on; otherwise they ship as files.
+    if (format === 'drawio' || (format === 'cetz' && app.settings.embedImages)) return
     for (const e of app.diagram.elements) {
       if (e.type === 'shape' && e.src?.startsWith('data:')) save(imagePath(e.id, e.src), e.src)
     }

@@ -38,6 +38,17 @@
     </section>
 
     <section>
+      <h3>Export</h3>
+      <label class="row">
+        <span>
+          Embed images in CeTZ
+          <small>Images are stored in the <code>.typ</code> file as base64 (via the <code>based</code> package) instead of separate files.</small>
+        </span>
+        <input type="checkbox" class="switch" bind:checked={app.settings.embedImages} />
+      </label>
+    </section>
+
+    <section>
       <h3>New elements</h3>
       <div class="row">
         <span>Font</span>
