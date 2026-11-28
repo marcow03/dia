@@ -13,20 +13,33 @@ pub const FORMAT: Format = Format {
 };
 
 pub const CETZ_VERSION: &str = "0.5.3";
+pub const BASED_VERSION: &str = "0.2.0";
 
 pub fn write(d: &Diagram) -> String {
-    let mut out = format!(
-        "#import \"@preview/cetz:{CETZ_VERSION}\"\n#set page(width: auto, height: auto, margin: 0.5cm)\n#set text(size: 14pt)\n\n"
-    );
-    for e in &d.elements {
-        if let Kind::Shape {
-            shape: ShapeKind::Image,
-            src,
-            ..
-        } = &e.kind
-        {
-            writeln!(out, "#let {} = \"{}\"", image_var(&e.id), image_path(&e.id, src)).unwrap();
+    let images: Vec<(&str, &str)> = d
+        .elements
+        .iter()
+        .filter_map(|e| match &e.kind {
+            Kind::Shape {
+                shape: ShapeKind::Image,
+                src,
+                ..
+            } => Some((e.id.as_str(), src.as_str())),
+            _ => None,
+        })
+        .collect();
+    let mut out = format!("#import \"@preview/cetz:{CETZ_VERSION}\"\n");
+    if images.iter().any(|(_, src)| embedded(src).is_some()) {
+        writeln!(out, "#import \"@preview/based:{BASED_VERSION}\": base64").unwrap();
+    }
+    out.push_str("#set page(width: auto, height: auto, margin: 0.5cm)\n#set text(size: 14pt)\n\n");
+    // Images given as base64 data URLs are embedded; everything else is referenced by path.
+    for (id, src) in images {
+        match embedded(src) {
+            Some(b64) => writeln!(out, "#let {} = base64.decode(\"{b64}\")", image_var(id)),
+            None => writeln!(out, "#let {} = \"{}\"", image_var(id), image_path(id, src)),
         }
+        .unwrap();
     }
     if !out.ends_with("\n\n") {
         out.push('\n');
@@ -263,6 +276,29 @@ fn color(hex: &str) -> String {
     format!("rgb(\"{hex}\")")
 }
 
+/// The base64 payload of a data URL.
+fn embedded(src: &str) -> Option<&str> {
+    src.split_once(";base64,")
+        .filter(|(head, _)| head.starts_with("data:"))
+        .map(|(_, b)| b)
+}
+
+/// Data URL for base64 image data, with the type guessed from its first bytes.
+fn data_url(b64: &str) -> String {
+    let mime = [
+        ("iVBOR", "png"),
+        ("/9j/", "jpeg"),
+        ("R0lGOD", "gif"),
+        ("UklGR", "webp"),
+        ("PHN2Zy", "svg+xml"),
+        ("PD94bW", "svg+xml"),
+    ]
+    .iter()
+    .find(|(magic, _)| b64.starts_with(magic))
+    .map_or("png", |(_, m)| m);
+    format!("data:image/{mime};base64,{b64}")
+}
+
 fn image_var(id: &str) -> String {
     let id: String = id.chars().map(|c| if c.is_alphanumeric() { c } else { '-' }).collect();
     format!("image-{id}")
@@ -436,9 +472,19 @@ fn walk(
 ) {
     if let Some(binding) = node.cast::<ast::LetBinding>()
         && let ast::LetBindingKind::Normal(ast::Pattern::Normal(Expr::Ident(name))) = binding.kind()
-        && let Some(Expr::Str(value)) = binding.init()
     {
-        vars.insert(name.get().to_string(), value.get().to_string());
+        match binding.init() {
+            Some(Expr::Str(value)) => {
+                vars.insert(name.get().to_string(), value.get().to_string());
+            }
+            // `base64.decode("…")` from the based package: an embedded image.
+            Some(Expr::FuncCall(call)) if matches!(call.callee(), Expr::FieldAccess(f) if f.field().get() == "decode") => {
+                if let Some(Value::Str(b64)) = call_args(call.args()).pos.first() {
+                    vars.insert(name.get().to_string(), data_url(b64));
+                }
+            }
+            _ => {}
+        }
         return;
     }
     if let Some(call) = node.cast::<ast::FuncCall>()
@@ -988,6 +1034,35 @@ mod tests {
         let back = read(&src, &mut w).unwrap();
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(back, d, "\n{src}");
+    }
+
+    #[test]
+    fn embedded_image() {
+        let mut d = Diagram::default();
+        let src = "data:image/png;base64,iVBORw0KGgo=";
+        d.elements.push(Element {
+            id: "i1".into(),
+            kind: Kind::Shape {
+                shape: ShapeKind::Image,
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+                src: src.into(),
+                rotate: 0.0,
+            },
+            style: Style {
+                stroke: None,
+                ..Style::default()
+            },
+            label: String::new(),
+            label_at: None,
+            group: None,
+        });
+        let out = write(&d);
+        assert!(out.contains("base64.decode(\"iVBORw0KGgo=\")"), "{out}");
+        let back = read(&out, &mut vec![]).unwrap();
+        assert_eq!(back, d);
     }
 
     #[test]
