@@ -53,6 +53,7 @@ dia-core reads every format into one intermediate model and writes it back out, 
 | `⌘A` | Select all |
 | `Delete` / `Backspace` | Delete selection |
 | `⇧`-click | Add to / remove from selection |
+| `⌥`-click | Select the next object below the pointer (repeat to cycle) |
 | `⇧` + drag object, line end or waypoint | Move freely, pixel by pixel (no grid, guide or anchor snapping; line ends stay unattached, also inside shapes) |
 | `⇧` + resize | Keep the aspect ratio (new shapes: square / circle) |
 | `Esc` | Deselect, back to select tool, close menus and dialogs |

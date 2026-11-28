@@ -1,6 +1,6 @@
 <script lang="ts">
   import ElementView from './ElementView.svelte'
-  import { anchorPoint, bounds, center, find, labelPoint, lineProject, linePoints, PX_PER_CM, rotatePoint, shapeAt, snap } from './geometry'
+  import { anchorPoint, bounds, center, find, labelPoint, pickShape, shapesAt, lineProject, linePoints, PX_PER_CM, rotatePoint, shapeAt, snap } from './geometry'
   import { openFiles, readImage } from './files'
   import LabelEditor from './LabelEditor.svelte'
   import { freezeRoute } from './router'
@@ -94,7 +94,15 @@
     const p = world(ev)
     const target = ev.target as globalThis.Element
     const handleEl = target.closest?.('[data-handle]') as HTMLElement | null
-    const id = (target.closest?.('[data-id]') as HTMLElement | null)?.dataset.id
+    let id = (target.closest?.('[data-id]') as HTMLElement | null)?.dataset.id
+    // Lines are hit by their stroke; for shapes decide geometrically so hollow shapes don't block.
+    if (id && find(d, id)?.type === 'shape') id = pickShape(d, p, 6 / scale)?.id ?? id
+    // ⌥-click selects the next object below the pointer, cycling through the stack.
+    if (ev.altKey && app.tool === 'select') {
+      const stack = d.elements.filter((e) => e.type === 'shape' && shapesAt(d, p).includes(e)).reverse()
+      const at = stack.findIndex((e) => app.selection.includes(e.id))
+      if (stack.length) id = stack[(at + 1) % stack.length].id
+    }
     // ⇧ on empty canvas pans like the hand tool.
     const shiftPan = ev.shiftKey && app.tool === 'select' && !id && !handleEl
     if (ev.button === 1 || spaceDown || app.tool === 'hand' || shiftPan) {

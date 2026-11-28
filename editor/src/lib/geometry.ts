@@ -197,6 +197,35 @@ export function bounds(d: Diagram, e: Element) {
   return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
 }
 
+/**
+ * The shape a click at `p` means: the topmost filled shape, image or text under it, or a hollow
+ * shape whose outline is within `tol`; failing that, the smallest shape containing `p`.
+ * Hollow shapes thus don't hide what lies inside them.
+ */
+export function pickShape(d: Diagram, p: Point, tol: number): Shape | undefined {
+  let smallest: Shape | undefined
+  for (let i = d.elements.length - 1; i >= 0; i--) {
+    const s = d.elements[i]
+    if (s.type !== 'shape') continue
+    const c = center(s)
+    const b = s.shape === 'text' || s.shape === 'image' ? null : border(s, p)
+    const inside = b ? Math.hypot(p.x - c.x, p.y - c.y) <= Math.hypot(b.x - c.x, b.y - c.y) + tol : contains(s, p)
+    if (!inside) continue
+    if (!b || s.style.fill || Math.hypot(p.x - b.x, p.y - b.y) < tol) return s
+    if (!smallest || s.w * s.h < smallest.w * smallest.h) smallest = s
+  }
+  return smallest
+}
+
+/** All shapes whose box contains `p`. */
+export const shapesAt = (d: Diagram, p: Point) =>
+  d.elements.filter((e): e is Shape => e.type === 'shape' && contains(e, p))
+
+function contains(s: Shape, p: Point) {
+  const q = rotatePoint(p, center(s), -(s.rotate ?? 0))
+  return q.x >= s.x && q.x <= s.x + s.w && q.y >= s.y && q.y <= s.y + s.h
+}
+
 export function shapeAt(d: Diagram, p: Point, exclude?: string): Shape | undefined {
   for (let i = d.elements.length - 1; i >= 0; i--) {
     const e = d.elements[i]
