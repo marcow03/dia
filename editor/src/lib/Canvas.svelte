@@ -80,11 +80,12 @@
 
   /** A line end at `p`: snapped to a nearby anchor, bound to the shape under it, or a free point. */
   function endAt(p: Point, exclude?: string, free = false): End {
-    // ⇧ places the end freely: no anchor snapping.
-    const a = free ? null : anchorAt(p, exclude)
+    // ⇧ places the end exactly at the pointer: no anchors, no binding, no grid (also inside shapes).
+    if (free) return p
+    const a = anchorAt(p, exclude)
     if (a) return a
     const s = shapeAt(d, p, exclude)
-    return s && s.shape !== 'text' ? { node: s.id } : free ? p : snapP(p)
+    return s && s.shape !== 'text' ? { node: s.id } : snapP(p)
   }
 
   function down(ev: PointerEvent) {
@@ -124,8 +125,8 @@
     }
     if (app.tool === 'line' || app.tool === 'arrow') {
       checkpoint()
-      const from = endAt(p)
-      const nid = addLine(from, snapP(p), app.tool)
+      const from = endAt(p, undefined, ev.shiftKey)
+      const nid = addLine(from, ev.shiftKey ? p : snapP(p), app.tool)
       app.selection = [nid]
       drag = { kind: 'end', id: nid, which: 'to' }
       return
@@ -171,7 +172,7 @@
   function move(ev: PointerEvent) {
     const p = world(ev)
     if (!drag) {
-      hover = app.tool === 'line' || app.tool === 'arrow' ? (anchorAt(p)?.node ?? shapeAt(d, p)?.id ?? null) : null
+      hover = (app.tool === 'line' || app.tool === 'arrow') && !ev.shiftKey ? (anchorAt(p)?.node ?? shapeAt(d, p)?.id ?? null) : null
       hoverAnchor = hover ? (anchorAt(p)?.anchor ?? null) : null
       return
     }
